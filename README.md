@@ -1,5 +1,5 @@
 # sootup
-[https://soot-oss.github.io/SootUp/v1.1.2/](https://soot-oss.github.io/SootUp/v1_2_0/)
+https://soot-oss.github.io/SootUp/v1_2_0
 
 ### Copy dependencies
 https://soot-oss.github.io/SootUp/v1_2_0/installation/

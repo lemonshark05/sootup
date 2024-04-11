@@ -44,6 +44,8 @@ Install graphviz to generate png of CFG.
 
 brew install graphviz
 
+cd src/test/resources/simple/
+
 dot -T png EvenOdd.dot -o EvenOdd_cfg.png
 
 dot -T png PrintInt.dot -o PrintInt_cfg.png

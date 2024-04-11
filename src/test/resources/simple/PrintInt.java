@@ -1,13 +1,16 @@
 public class PrintInt {
-    public static void printIntArray(int[] nums) {
-        for (int num : nums) {
-            System.out.print(num + " ");
+    public static void printIntArray(int x) {
+        for (int i = 0;i< x ; i++) {
+            if(x % 2 == 0) {
+                System.out.println(x + " is Even");
+            }else {
+                System.out.println(x + " is Odd");
+            }
         }
-        System.out.println();
     }
 
     public static void main(String[] args) {
-        int[] nums = {1, 2, 3, 4, 5};
+        int nums = 5;
         System.out.println("Array of integers:");
         printIntArray(nums);
     }

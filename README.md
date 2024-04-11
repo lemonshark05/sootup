@@ -39,5 +39,14 @@ straightforward applications to ensure accessibility and ease of analysis.
    critical areas of the application without being safely handled.
     - Concentrate on finding one specific type of security risk in the application,
    using a list of known risky data entry and exit points
+### Graphviz
+Install graphviz to generate png of CFG.
+
+brew install graphviz
+
+dot -T png EvenOdd.dot -o EvenOdd_cfg.png
+
+dot -T png PrintInt.dot -o PrintInt_cfg.png
+
 ### Papers
 https://courses.cs.washington.edu/courses/cse501/01wi/project/sable-thesis.pdf

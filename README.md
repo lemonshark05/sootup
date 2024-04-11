@@ -1,8 +1,8 @@
 # sootup
-https://soot-oss.github.io/SootUp/v1.1.2/
+https://soot-oss.github.io/SootUp/v1_2_0
 
 ### Copy dependencies
-https://soot-oss.github.io/SootUp/v1.1.2/installation/
+https://soot-oss.github.io/SootUp/v1_2_0/installation/
 
 <aside>
 💡 Add the JitPack repository to your build file

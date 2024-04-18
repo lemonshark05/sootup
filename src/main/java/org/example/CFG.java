@@ -25,7 +25,7 @@ public class CFG {
         JavaClassType classType = view.getIdentifierFactory().getClassType("EvenOdd");
         Optional<JavaSootClass> classOptional = view.getClass(classType);
         if(!classOptional.isPresent()) {
-            System.out.println("Class not founc");
+            System.out.println("Class not found");
             return;
         }
 

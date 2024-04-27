@@ -6,7 +6,7 @@ class Demo1 {
 
     static String getPassword(String user) {
         // mock
-        return "";
+        return "'); DROP TABLE Students;--";
     }
 
     public static void main(String[] args) {

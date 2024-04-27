@@ -113,6 +113,9 @@ public class Taints {
             return name.contains("internet") || name.contains("print");
         }
 
+        boolean isSanitizer(MethodSignature signature) {
+            return signature.getName().toLowerCase().contains("sanitize");
+        }
         void report(Stmt s) {
             System.out.println("Find security issue in: " + s);
             System.out.println("Location: " + s.getPositionInfo() + "\n");

@@ -1,5 +1,6 @@
 package org.example;
 
+import com.googlecode.dex2jar.ir.expr.BinopExpr;
 import heros.solver.Pair;
 import sootup.analysis.intraprocedural.ForwardFlowAnalysis;
 import sootup.core.graph.BasicBlock;
@@ -13,12 +14,17 @@ import sootup.core.jimple.common.stmt.AbstractDefinitionStmt;
 import sootup.core.jimple.common.stmt.JIfStmt;
 import sootup.core.jimple.common.stmt.Stmt;
 import sootup.core.signatures.MethodSignature;
+import sootup.core.typehierarchy.ViewTypeHierarchy;
+import sootup.core.types.ClassType;
 import sootup.java.core.JavaSootClass;
 import sootup.java.core.JavaSootMethod;
 import sootup.java.core.types.JavaClassType;
 import sootup.java.core.views.JavaView;
 import sootup.java.sourcecode.inputlocation.JavaSourcePathAnalysisInputLocation;
 import util.PostDominanceFinder;
+import sootup.callgraph.CallGraph;
+import sootup.callgraph.CallGraphAlgorithm;
+import sootup.callgraph.RapidTypeAnalysisAlgorithm;
 
 import javax.annotation.Nonnull;
 import java.util.*;
@@ -79,12 +85,17 @@ public class Taints {
         boolean visitControlBodyStmt;
         Stmt stmtInControlBody;
 
+        private CallGraph callGraph;
+
+        private Set<Stmt> reportStatements = new HashSet<>();
+
         /**
          * Construct the analysis from StmtGraph.
          */
         public <B extends BasicBlock<B>> InfoFlowAnalysis(StmtGraph<B> cfg, boolean considerImplicitFlow) {
             super(cfg);
             this.considerImplicitFlow = considerImplicitFlow;
+            this.callGraph = callGraph;
             if (considerImplicitFlow) {
                 this.postDom = new PostDominanceFinder(cfg);
                 // hack for visit control body first
@@ -105,18 +116,31 @@ public class Taints {
 
         public boolean isSource(MethodSignature signature) {
             String name = signature.getName().toLowerCase();
-            return name.contains("password") || name.contains("permission") || name.contains("secret");
+            return name.contains("password") || name.contains("permission") || name.contains("secret")
+            || name.contains("getparameter") || name.contains("getheader");
         }
 
         public boolean isSink(MethodSignature signature) {
             String name = signature.getName().toLowerCase();
-            return name.contains("internet") || name.contains("print");
+            return name.contains("internet") || name.contains("print") || name.contains("executequery") || name.contains("executeupdate") || name.contains("execute");
         }
 
         boolean isSanitizer(MethodSignature signature) {
             return signature.getName().toLowerCase().contains("sanitize");
         }
+
         void report(Stmt s) {
+            if (!reportStatements.add(s)) {
+                return;
+            }
+            if (s.containsInvokeExpr()) {
+                AbstractInvokeExpr invokeExpr = s.getInvokeExpr();
+                if (isSink(invokeExpr.getMethodSignature())) {
+                    System.out.println("Potential SQL Injection detected at: " + s);
+                    System.out.println("Invoked method: " + invokeExpr.getMethodSignature().getName());
+                    System.out.println("Location: " + s.getPositionInfo() + "\n");
+                }
+            }
             System.out.println("Find security issue in: " + s);
             System.out.println("Location: " + s.getPositionInfo() + "\n");
         }
@@ -171,16 +195,24 @@ public class Taints {
             }
 
             if (s instanceof AbstractDefinitionStmt) {
-                AbstractDefinitionStmt defS = (AbstractDefinitionStmt)s;
-                LValue def = defS.getLeftOp();
+                AbstractDefinitionStmt defStmt = (AbstractDefinitionStmt)s;
+                Value rightOp = defStmt.getRightOp();
+                LValue leftOp = defStmt.getLeftOp();
+
+                // Check if the right operand involves a binary operation which might represent string concatenation
+                if (rightOp instanceof BinopExpr) {
+                    BinopExpr binOp = (BinopExpr) rightOp;
+
+                }
+
                 if (s.containsInvokeExpr() && isSource(s.getInvokeExpr().getMethodSignature())) {
-                    out.put(def, TaintDom.getTainted());
+                    out.put(leftOp, TaintDom.getTainted());
                 } else {
-                    TaintDom val = eval(defS.getRightOp(), in);
+                    TaintDom val = eval(defStmt.getRightOp(), in);
                     if (considerImplicitFlow) {
                         val = val.join(condVal);
                     }
-                    out.put(def, val);
+                    out.put(leftOp, val);
                 }
             }
 
@@ -231,9 +263,9 @@ public class Taints {
     }
 
     public static void main(String[] args) {
-        JavaSourcePathAnalysisInputLocation inputLocation = new JavaSourcePathAnalysisInputLocation("src/test/resources/tests/");
+        JavaSourcePathAnalysisInputLocation inputLocation = new JavaSourcePathAnalysisInputLocation("src/test/resources/sql/");
         JavaView view = new JavaView(inputLocation);
-        JavaClassType classType = view.getIdentifierFactory().getClassType("Demo3");
+        JavaClassType classType = view.getIdentifierFactory().getClassType("SQLDemo");
         Optional<JavaSootClass> classOpt = view.getClass(classType);
         if (!classOpt.isPresent()) {
             System.out.println("class not found");
@@ -253,6 +285,9 @@ public class Taints {
         }
 
         JavaSootMethod sootMethod = method.get();
+        System.out.println(sootMethod.getSignature());
+        // print Jimple
+        System.out.println(sootMethod.getBody());
 
         StmtGraph<?> cfg = sootMethod.getBody().getStmtGraph();
         InfoFlowAnalysis analysis = new InfoFlowAnalysis(cfg, true);

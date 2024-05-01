@@ -50,5 +50,39 @@ dot -T png EvenOdd.dot -o EvenOdd_cfg.png
 
 dot -T png PrintInt.dot -o PrintInt_cfg.png
 
+# Soot & PTA
+Add new dependency in maven:
+```
+<dependencies>
+  <dependency>
+    <groupId>org.soot-oss</groupId>
+    <artifactId>soot</artifactId>
+    <version>4.3.0</version>
+  </dependency>
+  <dependency>
+     <groupId>org.apache.spark</groupId>
+     <artifactId>spark-core_2.12</artifactId>
+     <version>3.4.1</version>
+  </dependency>
+  <dependency>
+     <groupId>org.apache.spark</groupId>
+     <artifactId>spark-sql_2.12</artifactId>
+     <version>3.4.1</version>
+  </dependency>
+</dependencies>
+<repositories>
+  <repository>
+      <id>sonatype-snapshots</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+  </repository>
+</repositories>	
+
+```
+After making these changes, run the following Maven command to update your project and download the new dependencies:
+
+```
+mvn clean install
+```
+
 ### Papers
 https://courses.cs.washington.edu/courses/cse501/01wi/project/sable-thesis.pdf

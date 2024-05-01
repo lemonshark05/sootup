@@ -263,9 +263,9 @@ public class Taints {
     }
 
     public static void main(String[] args) {
-        JavaSourcePathAnalysisInputLocation inputLocation = new JavaSourcePathAnalysisInputLocation("src/test/resources/sql/");
+        JavaSourcePathAnalysisInputLocation inputLocation = new JavaSourcePathAnalysisInputLocation("src/test/resources/tests/");
         JavaView view = new JavaView(inputLocation);
-        JavaClassType classType = view.getIdentifierFactory().getClassType("SQLDemo");
+        JavaClassType classType = view.getIdentifierFactory().getClassType("Demo3");
         Optional<JavaSootClass> classOpt = view.getClass(classType);
         if (!classOpt.isPresent()) {
             System.out.println("class not found");
@@ -283,14 +283,16 @@ public class Taints {
             System.out.println("Method not found");
             return;
         }
-
+        // print Jimple
         JavaSootMethod sootMethod = method.get();
         System.out.println(sootMethod.getSignature());
-        // print Jimple
+        System.out.println(sootMethod.getName());
+        System.out.println(sootMethod.getDeclaringClassType());
         System.out.println(sootMethod.getBody());
 
         StmtGraph<?> cfg = sootMethod.getBody().getStmtGraph();
         InfoFlowAnalysis analysis = new InfoFlowAnalysis(cfg, true);
+
         analysis.run();
 
     }

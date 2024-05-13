@@ -9,7 +9,7 @@ import java.util.*;
 
 
 public class PTATest {
-    public static final String className = "org.example.Demo1";
+    public static final String className = "org.example.Demo3";
 
     public static Map<Value, Set<Integer>> workList = new LinkedHashMap<>();
 
@@ -17,17 +17,7 @@ public class PTATest {
         SootConfig.setupSoot(className);
         SootClass sootClass = Scene.v().getSootClass(className);
         //print Jimple
-        System.out.println("public class " + sootClass.getName() + " extends " + sootClass.getSuperclass().getName());
-        System.out.println("{");
-
-        for (SootMethod method : sootClass.getMethods()) {
-            if (method.isConcrete()) {
-                System.out.println("  " + method.getSubSignature() + " {");
-                printMethodJimple(method);
-                System.out.println("  }\n");
-            }
-        }
-        System.out.println("}");
+        printJimple(sootClass);
 
         SootMethod entryMethod = sootClass.getMethodByName("main");
         Solve(entryMethod);
@@ -41,7 +31,7 @@ public class PTATest {
 
         PointsToAnalysis pointsToAnalysis = Scene.v().getPointsToAnalysis();
         for (Local local : entryMethod.retrieveActiveBody().getLocals()) {
-            System.out.println(local.toString());
+            System.out.println(local.toString() + " | ");
             PointsToSet pointsToSet = pointsToAnalysis.reachingObjects(local);
             if(!pointsToSet.isEmpty()){
                 for (Type possibleType : pointsToSet.possibleTypes()) {
@@ -52,6 +42,19 @@ public class PTATest {
 
     }
 
+    private static void printJimple(SootClass sootClass) {
+        System.out.println("public class " + sootClass.getName() + " extends " + sootClass.getSuperclass().getName());
+        System.out.println("{");
+
+        for (SootMethod method : sootClass.getMethods()) {
+            if (method.isConcrete()) {
+                System.out.println("  " + method.getSubSignature() + " {");
+                printMethodJimple(method);
+                System.out.println("  }\n");
+            }
+        }
+        System.out.println("}");
+    }
     private static void printMethodJimple(SootMethod method) {
         Body body = method.retrieveActiveBody();
         for (Unit unit : body.getUnits()) {

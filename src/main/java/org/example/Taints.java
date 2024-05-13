@@ -94,26 +94,61 @@ public class Taints {
                 Value rightOp = stmt.getRightOp();
                 Value leftOp = stmt.getLeftOp();
 
-                // If the right side is a source, add the left side to the out set as tainted
-                if (isSource(rightOp)) {
-                    out.add(leftOp);
-                    analyzedValues.add(stmt);  // Mark this statement for review
+                System.out.println("Processing unit: " + unit);
+                System.out.println("Input taint set: " + in);
+
+                // Propagate taint if the right side is already tainted
+                if (rightOp instanceof InvokeExpr) {
+                    InvokeExpr invokeExpr = (InvokeExpr) rightOp;
+                    boolean tainted = false;
+
+                    // Check for instance method calls
+                    if (invokeExpr instanceof InstanceInvokeExpr) {
+                        InstanceInvokeExpr instanceInvoke = (InstanceInvokeExpr) invokeExpr;
+                        // Check if the base object is tainted
+                        if (in.contains(instanceInvoke.getBase())) {
+                            tainted = true;
+                        }
+                    }
+
+                    // Check if any argument is tainted
+                    for (Value arg : invokeExpr.getArgs()) {
+                        if (in.contains(arg)) {
+                            tainted = true;
+                            break;
+                        }
+                    }
+
+                    if (tainted) {
+                        out.add(leftOp);
+                        analyzedValues.add(stmt);
+                        System.out.println("Tainted " + leftOp + " due to tainted argument or base in: " + rightOp);
+                    }
                 }
 
-                // If the right side is tainted, add the left side to the out set as tainted
-                if (in.contains(rightOp)) {
-                    out.add(leftOp);
-                    analyzedValues.add(stmt);
-                }
-
-                // Propagate taint for string operations
+                // Special handling for string concatenations
                 if (rightOp instanceof BinopExpr && rightOp.getType() instanceof RefType &&
                         ((RefType)rightOp.getType()).toString().equals("java.lang.String")) {
                     BinopExpr expr = (BinopExpr) rightOp;
                     if (in.contains(expr.getOp1()) || in.contains(expr.getOp2())) {
                         out.add(leftOp);
                         analyzedValues.add(stmt);
+                        System.out.println("Tainting due to string concatenation in: " + stmt);
                     }
+                }
+
+                // Directly propagate taint from right to left if right is tainted
+                if (in.contains(rightOp)) {
+                    out.add(leftOp);
+                    analyzedValues.add(stmt);
+                    System.out.println("Tainted " + leftOp + " due to tainted right operand: " + rightOp);
+                }
+
+                // Check and mark the sources
+                if (isSource(rightOp)) {
+                    out.add(leftOp);
+                    analyzedValues.add(stmt);
+                    System.out.println("Source identified and tainted: " + leftOp);
                 }
             }
 

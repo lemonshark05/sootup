@@ -36,11 +36,11 @@ public class Taints {
         }
     }
     public static void main(String[] args) {
-        SootConfig.setupSoot("org.example.Demo3");
-        SootClass sootClass = Scene.v().loadClassAndSupport("org.example.Demo3");
+        SootConfig.setupSoot("org.example.Demo1");
+        SootClass sootClass = Scene.v().loadClassAndSupport("org.example.Demo1");
         sootClass.setApplicationClass();
         Scene.v().setMainClass(sootClass);
-//        printJimple(sootClass);
+        printJimple(sootClass);
 
         for (SootMethod method : sootClass.getMethods()) {
             if (method.getName().equals("main")) {
@@ -99,6 +99,7 @@ public class Taints {
 
                 System.out.println("Processing unit: " + unit);
                 System.out.println("Input taint set: " + in);
+
 
                 // Check and handle rightOp if it's an instance of StaticFieldRef
                 if (rightOp instanceof StaticFieldRef) {
@@ -194,15 +195,10 @@ public class Taints {
             // Check for taint in arguments and propagate to method's context if required
             for (Value arg : invokeExpr.getArgs()) {
                 if (in.contains(arg)) {
-                    // Propagate taint in the callee context
-                    // You would need to manage contexts for each method call
                     System.out.println("Argument tainted: " + arg);
                 }
             }
 
-            // Assume returned values might be tainted, handle based on method analysis
-            // This is a simplified approach, actual implementation might require tracking
-            // return values based on deeper analysis of the method body or summaries
         }
 
         private void handleInvocation(Stmt stmt, FlowSet in, FlowSet out) {

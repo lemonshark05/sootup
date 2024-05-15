@@ -40,13 +40,13 @@ public class Taints {
         SootClass sootClass = Scene.v().loadClassAndSupport("org.example.Demo3");
         sootClass.setApplicationClass();
         Scene.v().setMainClass(sootClass);
+//        printJimple(sootClass);
 
         for (SootMethod method : sootClass.getMethods()) {
             if (method.getName().equals("main")) {
                 Body b = method.retrieveActiveBody();
                 MyTaintAnalysis analysis = new MyTaintAnalysis(new ExceptionalUnitGraph(b));
                 analysis.printResults();
-//                printJimple(sootClass);
             }
         }
 
@@ -68,10 +68,13 @@ public class Taints {
         private Body body;
         private Set<Unit> analyzedValues;
 
+        private PointsToAnalysis pta;
+
         public MyTaintAnalysis(UnitGraph graph) {
             super(graph);
             this.body = ((ExceptionalUnitGraph) graph).getBody();
             this.analyzedValues = new HashSet<>();
+            this.pta = Scene.v().getPointsToAnalysis();
             doAnalysis();
         }
 
@@ -96,6 +99,12 @@ public class Taints {
 
                 System.out.println("Processing unit: " + unit);
                 System.out.println("Input taint set: " + in);
+
+                // Check and handle rightOp if it's an instance of StaticFieldRef
+                if (rightOp instanceof StaticFieldRef) {
+                    // Handle static field reference specifically
+                    // Maybe check if it's a source of taint or something similar
+                }
 
                 // Propagate taint if the right side is already tainted
                 if (rightOp instanceof InvokeExpr) {
@@ -124,6 +133,27 @@ public class Taints {
                         analyzedValues.add(stmt);
                         System.out.println("Tainted " + leftOp + " due to tainted argument or base in: " + rightOp);
                     }
+                }
+
+                if (unit instanceof InvokeStmt) {
+                    InvokeStmt invokeStmt = (InvokeStmt) unit;
+                    InvokeExpr invokeExpr = invokeStmt.getInvokeExpr();
+                    handleMethodInvocation(invokeExpr, in, out);
+                }
+
+                if (unit instanceof ReturnStmt) {
+                    ReturnStmt returnStmt = (ReturnStmt) unit;
+                    Value returnValue = returnStmt.getOp();
+                    if (in.contains(returnValue)) {
+
+                    }
+                }
+
+                // Check if the leftOp points to any object that rightOp points to (aliasing)
+                if (rightOp instanceof Local && in.contains(rightOp)) {
+                    out.add(leftOp);
+                    analyzedValues.add(stmt);
+                    System.out.println("Tainted " + leftOp + " due to tainted right operand: " + rightOp);
                 }
 
                 // Special handling for string concatenations
@@ -158,6 +188,21 @@ public class Taints {
                     handleInvocation(stmt, in, out);
                 }
             }
+        }
+
+        private void handleMethodInvocation(InvokeExpr invokeExpr, FlowSet in, FlowSet out) {
+            // Check for taint in arguments and propagate to method's context if required
+            for (Value arg : invokeExpr.getArgs()) {
+                if (in.contains(arg)) {
+                    // Propagate taint in the callee context
+                    // You would need to manage contexts for each method call
+                    System.out.println("Argument tainted: " + arg);
+                }
+            }
+
+            // Assume returned values might be tainted, handle based on method analysis
+            // This is a simplified approach, actual implementation might require tracking
+            // return values based on deeper analysis of the method body or summaries
         }
 
         private void handleInvocation(Stmt stmt, FlowSet in, FlowSet out) {

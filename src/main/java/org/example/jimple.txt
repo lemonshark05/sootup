@@ -1,0 +1,80 @@
+public class org.example.Demo3 extends java.lang.Object
+{
+  void <init>() {
+    this := @this: org.example.Demo3
+    specialinvoke this.<java.lang.Object: void <init>()>()
+    return
+  }
+
+  void main(java.lang.String[]) {
+    args := @parameter0: java.lang.String[]
+    $stack10 = new java.util.Scanner
+    $stack11 = <java.lang.System: java.io.InputStream in>
+    specialinvoke $stack10.<java.util.Scanner: void <init>(java.io.InputStream)>($stack11)
+    conn = null
+    stmt = null
+    rs = null
+    $stack12 = staticinvoke <java.sql.DriverManager: java.sql.Connection getConnection(java.lang.String,java.lang.String,java.lang.String)>("jdbc:mysql://localhost:3306/Database", "testuserName", "123456")
+    conn = $stack12
+    $stack13 = interfaceinvoke $stack12.<java.sql.Connection: java.sql.Statement createStatement()>()
+    stmt = $stack13
+    $stack14 = <java.lang.System: java.io.PrintStream out>
+    virtualinvoke $stack14.<java.io.PrintStream: void println(java.lang.String)>("Enter username:")
+    $stack15 = virtualinvoke $stack10.<java.util.Scanner: java.lang.String nextLine()>()
+    $stack16 = <java.lang.System: java.io.PrintStream out>
+    virtualinvoke $stack16.<java.io.PrintStream: void println(java.lang.String)>("Enter password:")
+    $stack17 = virtualinvoke $stack10.<java.util.Scanner: java.lang.String nextLine()>()
+    $stack18 = new java.lang.StringBuilder
+    specialinvoke $stack18.<java.lang.StringBuilder: void <init>()>()
+    $stack19 = virtualinvoke $stack18.<java.lang.StringBuilder: java.lang.StringBuilder append(java.lang.String)>("SELECT * FROM users WHERE username = \'")
+    $stack20 = virtualinvoke $stack19.<java.lang.StringBuilder: java.lang.StringBuilder append(java.lang.String)>($stack15)
+    $stack21 = virtualinvoke $stack20.<java.lang.StringBuilder: java.lang.StringBuilder append(java.lang.String)>("\' AND password = \'")
+    $stack22 = virtualinvoke $stack21.<java.lang.StringBuilder: java.lang.StringBuilder append(java.lang.String)>($stack17)
+    $stack23 = virtualinvoke $stack22.<java.lang.StringBuilder: java.lang.StringBuilder append(java.lang.String)>("\'")
+    $stack24 = virtualinvoke $stack23.<java.lang.StringBuilder: java.lang.String toString()>()
+    $stack25 = interfaceinvoke $stack13.<java.sql.Statement: java.sql.ResultSet executeQuery(java.lang.String)>($stack24)
+    rs = $stack25
+    $stack26 = interfaceinvoke $stack25.<java.sql.ResultSet: boolean next()>()
+    if $stack26 == 0 goto $stack27 = <java.lang.System: java.io.PrintStream out>
+    $stack30 = <java.lang.System: java.io.PrintStream out>
+    virtualinvoke $stack30.<java.io.PrintStream: void println(java.lang.String)>("Login successful!")
+    goto [?= (branch)]
+    $stack27 = <java.lang.System: java.io.PrintStream out>
+    virtualinvoke $stack27.<java.io.PrintStream: void println(java.lang.String)>("Login failed!")
+    if $stack25 == null goto (branch)
+    interfaceinvoke $stack25.<java.sql.ResultSet: void close()>()
+    if $stack13 == null goto (branch)
+    interfaceinvoke $stack13.<java.sql.Statement: void close()>()
+    if $stack12 == null goto (branch)
+    interfaceinvoke $stack12.<java.sql.Connection: void close()>()
+    goto [?= virtualinvoke $stack10.<java.util.Scanner: void close()>()]
+    $stack42 := @caughtexception
+    virtualinvoke $stack42.<java.sql.SQLException: void printStackTrace()>()
+    goto [?= virtualinvoke $stack10.<java.util.Scanner: void close()>()]
+    $stack39 := @caughtexception
+    if rs == null goto (branch)
+    interfaceinvoke rs.<java.sql.ResultSet: void close()>()
+    if stmt == null goto (branch)
+    interfaceinvoke stmt.<java.sql.Statement: void close()>()
+    if conn == null goto (branch)
+    interfaceinvoke conn.<java.sql.Connection: void close()>()
+    goto [?= virtualinvoke $stack10.<java.util.Scanner: void close()>()]
+    $stack37 := @caughtexception
+    virtualinvoke $stack37.<java.sql.SQLException: void printStackTrace()>()
+    goto [?= virtualinvoke $stack10.<java.util.Scanner: void close()>()]
+    $stack33 := @caughtexception
+    if rs == null goto (branch)
+    interfaceinvoke rs.<java.sql.ResultSet: void close()>()
+    if stmt == null goto (branch)
+    interfaceinvoke stmt.<java.sql.Statement: void close()>()
+    if conn == null goto (branch)
+    interfaceinvoke conn.<java.sql.Connection: void close()>()
+    goto [?= throw $stack33]
+    $stack32 := @caughtexception
+    virtualinvoke $stack32.<java.sql.SQLException: void printStackTrace()>()
+    throw $stack33
+    virtualinvoke $stack10.<java.util.Scanner: void close()>()
+    return
+  }
+
+}

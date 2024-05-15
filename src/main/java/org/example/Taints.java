@@ -3,6 +3,8 @@ package org.example;
 import soot.*;
 import soot.jimple.*;
 import soot.jimple.internal.JAssignStmt;
+import soot.jimple.toolkits.callgraph.CallGraph;
+import soot.jimple.toolkits.callgraph.Edge;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 import soot.toolkits.graph.UnitGraph;
 import soot.toolkits.scalar.ArraySparseSet;
@@ -10,6 +12,7 @@ import soot.toolkits.scalar.FlowSet;
 import soot.toolkits.scalar.ForwardFlowAnalysis;
 
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
 
 public class Taints {
@@ -42,26 +45,29 @@ public class Taints {
         Scene.v().setMainClass(sootClass);
         printJimple(sootClass);
 
+        PackManager.v().runPacks();
+
+        CallGraph callGraph = Scene.v().getCallGraph();
         for (SootMethod method : sootClass.getMethods()) {
-            if (method.getName().equals("main")) {
-                Body b = method.retrieveActiveBody();
-                MyTaintAnalysis analysis = new MyTaintAnalysis(new ExceptionalUnitGraph(b));
-                analysis.printResults();
+            if (method.isConcrete()) {
+                analyzeMethod(method, callGraph);
             }
         }
+    }
+    private static void analyzeMethod(SootMethod method, CallGraph callGraph) {
+        System.out.println("Analyzing method: " + method.getSignature());
+        Body body = method.retrieveActiveBody();
+        MyTaintAnalysis analysis = new MyTaintAnalysis(new ExceptionalUnitGraph(body));
+        analysis.printResults();
 
-//        // Register the analysis as a transformation that gets applied on all methods
-//        PackManager.v().getPack("jtp").add(new Transform("jtp.myTaintAnalysis", new BodyTransformer() {
-//            @Override
-//            protected void internalTransform(Body b, String phaseName, Map<String, String> options) {
-//                // Perform the analysis on the method's body
-//                MyTaintAnalysis analysis = new MyTaintAnalysis(new ExceptionalUnitGraph(b));
-//                printJimple(b.getMethod().getDeclaringClass());
-//                analysis.printResults();
-//            }
-//        }));
-//
-//        PackManager.v().runPacks();
+        // Iterator CallGraph to get all functions
+        Iterator<Edge> edges = callGraph.edgesOutOf(method);
+        while (edges.hasNext()) {
+            SootMethod targetMethod = edges.next().tgt();
+            if (targetMethod.isConcrete()) {
+                analyzeMethod(targetMethod, callGraph);
+            }
+        }
     }
 
     private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, FlowSet> {
@@ -97,8 +103,8 @@ public class Taints {
                 Value rightOp = stmt.getRightOp();
                 Value leftOp = stmt.getLeftOp();
 
-                System.out.println("Processing unit: " + unit);
-                System.out.println("Input taint set: " + in);
+//                System.out.println("Processing unit: " + unit);
+//                System.out.println("Input taint set: " + in);
 
 
                 // Check and handle rightOp if it's an instance of StaticFieldRef

@@ -11,11 +11,23 @@ import soot.toolkits.scalar.ArraySparseSet;
 import soot.toolkits.scalar.FlowSet;
 import soot.toolkits.scalar.ForwardFlowAnalysis;
 
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Set;
+import java.util.*;
 
 public class Taints {
+
+    static Map<SootMethod, FlowSet> methodEntryMap = new TreeMap<>(new Comparator<SootMethod>() {
+        @Override
+        public int compare(SootMethod m1, SootMethod m2) {
+            return m1.getSignature().compareTo(m2.getSignature());
+        }
+    });
+
+    static Map<SootMethod, FlowSet> methodExitMap = new TreeMap<>(new Comparator<SootMethod>() {
+        @Override
+        public int compare(SootMethod m1, SootMethod m2) {
+            return m1.getSignature().compareTo(m2.getSignature());
+        }
+    });
 
     private static void printJimple(SootClass sootClass) {
         System.out.println("public class " + sootClass.getName() + " extends " + sootClass.getSuperclass().getName());
@@ -39,8 +51,8 @@ public class Taints {
         }
     }
     public static void main(String[] args) {
-        SootConfig.setupSoot("org.example.Demo1");
-        SootClass sootClass = Scene.v().loadClassAndSupport("org.example.Demo1");
+        SootConfig.setupSoot("org.example.Demo2");
+        SootClass sootClass = Scene.v().loadClassAndSupport("org.example.Demo2");
         sootClass.setApplicationClass();
         Scene.v().setMainClass(sootClass);
         printJimple(sootClass);
@@ -55,16 +67,26 @@ public class Taints {
         }
     }
     private static void analyzeMethod(SootMethod method, CallGraph callGraph) {
+        if (methodExitMap.containsKey(method)) {
+            // Already analysis this method
+            return;
+        }
+
         System.out.println("Analyzing method: " + method.getSignature());
         Body body = method.retrieveActiveBody();
         MyTaintAnalysis analysis = new MyTaintAnalysis(new ExceptionalUnitGraph(body));
+        FlowSet entryFlow = analysis.entryInitialFlow();
+        FlowSet exitFlow = new ArraySparseSet();
+        analysis.merge(entryFlow, methodEntryMap.getOrDefault(method, new ArraySparseSet()), exitFlow);
+        methodEntryMap.put(method, entryFlow);
+        methodExitMap.put(method, exitFlow);
         analysis.printResults();
 
         // Iterator CallGraph to get all functions
         Iterator<Edge> edges = callGraph.edgesOutOf(method);
         while (edges.hasNext()) {
             SootMethod targetMethod = edges.next().tgt();
-            if (targetMethod.isConcrete()) {
+            if (targetMethod.isConcrete() && !methodExitMap.containsKey(targetMethod)) {
                 analyzeMethod(targetMethod, callGraph);
             }
         }
@@ -106,6 +128,18 @@ public class Taints {
 //                System.out.println("Processing unit: " + unit);
 //                System.out.println("Input taint set: " + in);
 
+                if (rightOp instanceof Local && leftOp instanceof Local) {
+                    // Use PTA
+                    PointsToSet rightPts = pta.reachingObjects((Local) rightOp);
+                    PointsToSet leftPts = pta.reachingObjects((Local) leftOp);
+
+                    if (!rightPts.isEmpty() && rightPts.hasNonEmptyIntersection(leftPts)) {
+                        // If two variables may point to the same object, pass taint
+                        out.add(leftOp);
+                        analyzedValues.add(stmt);
+                        System.out.println("Alias detected and taint propagated due to pointer analysis.");
+                    }
+                }
 
                 // Check and handle rightOp if it's an instance of StaticFieldRef
                 if (rightOp instanceof StaticFieldRef) {
@@ -198,7 +232,12 @@ public class Taints {
         }
 
         private void handleMethodInvocation(InvokeExpr invokeExpr, FlowSet in, FlowSet out) {
-            // Check for taint in arguments and propagate to method's context if required
+            SootMethod method = invokeExpr.getMethod();
+            if (methodExitMap.containsKey(method)) {
+                FlowSet methodExitSet = methodExitMap.get(method);
+                out.union(methodExitSet, out); // Update the current taint set with the taint set of the called method
+            }
+            // Check for taint in arguments
             for (Value arg : invokeExpr.getArgs()) {
                 if (in.contains(arg)) {
                     System.out.println("Argument tainted: " + arg);

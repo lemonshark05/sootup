@@ -18,6 +18,7 @@ import java.util.Set;
 public class Taints {
 
     private static void printJimple(SootClass sootClass) {
+        System.out.println("PRINTING JIMPLE========================================================================");
         System.out.println("public class " + sootClass.getName() + " extends " + sootClass.getSuperclass().getName());
         System.out.println("{");
 
@@ -29,6 +30,7 @@ public class Taints {
             }
         }
         System.out.println("}");
+        System.out.println("END      JIMPLE========================================================================");
     }
 
     private static void printMethodJimple(SootMethod method) {
@@ -38,15 +40,27 @@ public class Taints {
             System.out.println("    " + unitStr.replace(";", ";\n    ")); // Indent and format statements
         }
     }
-    public static void main(String[] args) {
-        SootConfig.setupSoot("org.example.Demo1");
-        SootClass sootClass = Scene.v().loadClassAndSupport("org.example.Demo1");
-        sootClass.setApplicationClass();
+
+    @SuppressWarnings("SameParameterValue")
+    private static SootClass setupSoot(String mainClass) {
+        SootConfig.setupSoot(mainClass);
+        SootClass sootClass = Scene.v().loadClassAndSupport(mainClass);
+        sootClass.setApplicationClass(); // as opposed to library class
         Scene.v().setMainClass(sootClass);
+
+        return sootClass;
+    }
+
+    public static void main(String[] args) {
+        SootClass sootClass = setupSoot("org.example.Demo1");
         printJimple(sootClass);
 
         PackManager.v().runPacks();
 
+        analyzeMethods(sootClass);
+    }
+
+    private static void analyzeMethods(SootClass sootClass) {
         CallGraph callGraph = Scene.v().getCallGraph();
         for (SootMethod method : sootClass.getMethods()) {
             if (method.isConcrete()) {
@@ -54,6 +68,7 @@ public class Taints {
             }
         }
     }
+
     private static void analyzeMethod(SootMethod method, CallGraph callGraph) {
         System.out.println("Analyzing method: " + method.getSignature());
         Body body = method.retrieveActiveBody();

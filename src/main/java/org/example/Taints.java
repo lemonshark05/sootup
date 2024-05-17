@@ -3,8 +3,6 @@ package org.example;
 import soot.*;
 import soot.jimple.*;
 import soot.jimple.internal.JAssignStmt;
-import soot.jimple.spark.pag.PAG;
-import soot.jimple.spark.sets.HashPointsToSet;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.jimple.toolkits.callgraph.Edge;
 import soot.toolkits.graph.ExceptionalUnitGraph;
@@ -17,21 +15,31 @@ import java.util.*;
 
 public class Taints {
 
-    static Map<SootMethod, FlowSet> methodEntryMap = new TreeMap<>(new Comparator<SootMethod>() {
-        @Override
-        public int compare(SootMethod m1, SootMethod m2) {
-            return m1.getSignature().compareTo(m2.getSignature());
-        }
-    });
+    // Debug variables
+    private static final String TARGET_METHOD_NAME = "loginUsers";
+    private static final String TARGET_PACKAGE_NAME = "org.example.Demo1";
 
-    static Map<SootMethod, FlowSet> methodExitMap = new TreeMap<>(new Comparator<SootMethod>() {
-        @Override
-        public int compare(SootMethod m1, SootMethod m2) {
-            return m1.getSignature().compareTo(m2.getSignature());
-        }
-    });
+    // @TODO case sensitivity?
+    private static final String[] TAINT_SRCS = {
+            "java.util.Scanner.nextLine"
+    };
+    private static final String[] TAINT_SNKS = {
+            "java.sql.Statement.executeQuery",
+            "java.sql.Statement.executeUpdate",
+            "java.sql.Statement.execute"
+    };
+
+    public static void main(String[] args) {
+        SootClass sootClass = setupSoot(TARGET_PACKAGE_NAME);
+        printJimple(sootClass);
+
+        PackManager.v().runPacks();
+
+        analyzeMethodByName(sootClass, TARGET_METHOD_NAME); // intra-method
+    }
 
     private static void printJimple(SootClass sootClass) {
+        System.out.println("PRINTING JIMPLE========================================================================");
         System.out.println("public class " + sootClass.getName() + " extends " + sootClass.getSuperclass().getName());
         System.out.println("{");
 
@@ -43,6 +51,7 @@ public class Taints {
             }
         }
         System.out.println("}");
+        System.out.println("END JIMPLE=============================================================================");
     }
 
     private static void printMethodJimple(SootMethod method) {
@@ -52,16 +61,32 @@ public class Taints {
             System.out.println("    " + unitStr.replace(";", ";\n    ")); // Indent and format statements
         }
     }
-    public static void main(String[] args) {
-        String inputRoute = "org.example.Demo4";
-        SootConfig.setupSoot(inputRoute);
-        SootClass sootClass = Scene.v().loadClassAndSupport(inputRoute);
-        sootClass.setApplicationClass();
+
+    @SuppressWarnings("SameParameterValue")
+    private static SootClass setupSoot(String mainClass) {
+        SootConfig.setupSoot(mainClass);
+        SootClass sootClass = Scene.v().loadClassAndSupport(mainClass);
+        sootClass.setApplicationClass(); // as opposed to library class
         Scene.v().setMainClass(sootClass);
-        printJimple(sootClass);
 
-        PackManager.v().runPacks();
+        return sootClass;
+    }
 
+    // intra-method
+    @SuppressWarnings("SameParameterValue")
+    private static void analyzeMethodByName(SootClass sootClass, String targetMethodName) {
+        CallGraph callGraph = Scene.v().getCallGraph();
+        for (SootMethod method : sootClass.getMethods()) {
+            System.out.println("analyzeMethodByName | checking methodSignature: " + method.getName());
+            if (method.isConcrete() && method.getName().equals(targetMethodName)) {
+                System.out.println("analyzeMethodByName | target method found: " + method.getName());
+                analyzeMethod(method, callGraph);
+            }
+        }
+    }
+
+    // DOES NOT WORK FOR NOW
+    private static void analyzeMethods(SootClass sootClass) {
         CallGraph callGraph = Scene.v().getCallGraph();
         for (SootMethod method : sootClass.getMethods()) {
             if (method.isConcrete()) {
@@ -69,35 +94,29 @@ public class Taints {
             }
         }
     }
-    private static void analyzeMethod(SootMethod method, CallGraph callGraph) {
-        if (methodExitMap.containsKey(method)) {
-            // Already analysis this method
-            return;
-        }
 
+    private static void analyzeMethod(SootMethod method, CallGraph callGraph) {
         System.out.println("Analyzing method: " + method.getSignature());
         Body body = method.retrieveActiveBody();
         MyTaintAnalysis analysis = new MyTaintAnalysis(new ExceptionalUnitGraph(body));
-        FlowSet entryFlow = analysis.entryInitialFlow();
-        FlowSet exitFlow = new ArraySparseSet();
-        analysis.merge(entryFlow, methodEntryMap.getOrDefault(method, new ArraySparseSet()), exitFlow);
-        methodEntryMap.put(method, entryFlow);
-        methodExitMap.put(method, exitFlow);
         analysis.printResults();
-
-        // Iterator CallGraph to get all functions
-        Iterator<Edge> edges = callGraph.edgesOutOf(method);
-        while (edges.hasNext()) {
-            SootMethod targetMethod = edges.next().tgt();
-            if (targetMethod.isConcrete() && !methodExitMap.containsKey(targetMethod)) {
-                analyzeMethod(targetMethod, callGraph);
-            }
-        }
     }
 
+    // TEMPORARILY only dealing with Local, would need to change going forwards.
     private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, FlowSet> {
         private Body body;
         private Set<Unit> analyzedValues;
+
+        private Unit prevUnit;
+        private Unit currUnit;
+
+        // using unit as an identifier for both program point and src
+        // @TODO this will have to go become FlowSet for flowThrough eventually
+        private HashMap<Unit, HashMap<Value, Set<Unit>>> store;
+
+        // assign identifier to source and sink units, useful at all?
+        private HashMap<Unit, String> srcs; // @TODO create addSrc method to like a hashcons
+        private HashMap<Unit, String> snks; // @TODO create addSnk method to like a hashcons
 
         private PointsToAnalysis pta;
 
@@ -105,24 +124,59 @@ public class Taints {
             super(graph);
             this.body = ((ExceptionalUnitGraph) graph).getBody();
             this.analyzedValues = new HashSet<>();
+            this.store = new HashMap<>();
             this.pta = Scene.v().getPointsToAnalysis();
+
+            // im just breaking the abstract syntax (for now)
+            this.prevUnit = null;
+            this.currUnit = null; // @TODO likely not necessary
             doAnalysis();
+
+            /*
+            System.out.println();
+            System.out.println("== THE STORE ==");
+            System.out.println(store.toString());
+            System.out.println();
+
+
+            System.out.println("graph check debug start+++++++++++++++++++++++++++++++++++");
+            for (Map.Entry<Unit, FlowSet> i : this.unitToAfterFlow.entrySet()) {
+                Stmt stmt = (Stmt) i.getKey();
+                System.out.println(stmt.toString());
+            }
+            System.out.println("graph check debug end+++++++++++++++++++++++++++++++++++");
+            */
         }
 
+        @Override
+        protected void merge(FlowSet in1, FlowSet in2, FlowSet out) {
+            in1.union(in2, out);
+        }
+
+        @Override
+        protected void copy(FlowSet source, FlowSet dest) {
+            source.copy(dest);
+        }
+
+        // start with no taints
+        @Override
+        protected FlowSet entryInitialFlow() {
+            return new ArraySparseSet();
+        }
+
+        // new set with no taints
         @Override
         protected FlowSet newInitialFlow() {
             return new ArraySparseSet();
         }
 
         @Override
-        protected FlowSet entryInitialFlow() {
-            return new ArraySparseSet();
-        }
-
-        @Override
         protected void flowThrough(FlowSet in, Unit unit, FlowSet out) {
-            in.copy(out);
-//            System.out.println("Processing unit: " + unit);
+
+            this.currUnit = unit;
+
+            in.copy(out); // set current set of tainted vars to previous instruction's set
+            storeCopy(this.prevUnit, this.currUnit); // @TODO eventually replaced with FlowSet
 
             if (unit instanceof JAssignStmt) {
                 JAssignStmt stmt = (JAssignStmt) unit;
@@ -131,32 +185,12 @@ public class Taints {
 
 //                System.out.println("Processing unit: " + unit);
 //                System.out.println("Input taint set: " + in);
-//                System.out.println("Left Operand: " + leftOp + " of type " + leftOp.getType() + "Is left Operand a Local? " + (leftOp instanceof Local));
-//                System.out.println("Right Operand: " + rightOp + " of type " + rightOp.getType() + "Is Right Operand a Local? " + (rightOp instanceof FieldRef));
 
-                // Handle assignment involving FieldRefs
-                if (leftOp instanceof FieldRef || rightOp instanceof FieldRef) {
-                    handleFieldAssignment(leftOp, rightOp, in, out);
-                }
 
-                if (leftOp instanceof Local && rightOp instanceof Local) {
-                    PointsToSet rightPts = pta.reachingObjects((Local) rightOp);
-                    PointsToSet leftPts = pta.reachingObjects((Local) leftOp);
-                    if (!rightPts.isEmpty() && rightPts.hasNonEmptyIntersection(leftPts)) {
-                        out.add(leftOp);
-                        analyzedValues.add(stmt);
-                        System.out.println("Alias detected between " + leftOp + " and " + rightOp);
-                    }
-                }
-
-                // Propagation logic for static fields and constructors
-                if (rightOp instanceof StaticFieldRef || rightOp instanceof NewExpr) {
-                    // Handle static fields or new expressions as sources
-                    if (taintSource(rightOp)) {
-                        out.add(leftOp);
-                        analyzedValues.add(stmt);
-                        System.out.println("New source of taint due to " + rightOp);
-                    }
+                // Check and handle rightOp if it's an instance of StaticFieldRef
+                if (rightOp instanceof StaticFieldRef) {
+                    // Handle static field reference specifically
+                    // Maybe check if it's a source of taint or something similar
                 }
 
                 // Propagate taint if the right side is already tainted
@@ -167,8 +201,15 @@ public class Taints {
                     // Check for instance method calls
                     if (invokeExpr instanceof InstanceInvokeExpr) {
                         InstanceInvokeExpr instanceInvoke = (InstanceInvokeExpr) invokeExpr;
+
+                        Set<Unit> taintedBy = taints(instanceInvoke.getBase());
+                        for (Unit taint : taintedBy) {
+
+                        }
+
                         // Check if the base object is tainted
                         if (in.contains(instanceInvoke.getBase())) {
+
                             tainted = true;
                         }
                     }
@@ -188,6 +229,19 @@ public class Taints {
                     }
                 }
 
+                if (unit instanceof InvokeStmt) {
+                    InvokeStmt invokeStmt = (InvokeStmt) unit;
+                    InvokeExpr invokeExpr = invokeStmt.getInvokeExpr();
+                    handleMethodInvocation(invokeExpr, in, out);
+                }
+
+                if (unit instanceof ReturnStmt) {
+                    ReturnStmt returnStmt = (ReturnStmt) unit;
+                    Value returnValue = returnStmt.getOp();
+                    if (in.contains(returnValue)) {
+
+                    }
+                }
 
                 // Check if the leftOp points to any object that rightOp points to (aliasing)
                 if (rightOp instanceof Local && in.contains(rightOp)) {
@@ -216,17 +270,11 @@ public class Taints {
 
                 // Check and mark the sources
                 if (isSource(rightOp)) {
-                    System.out.println("Source detected: " + rightOp);
+                    storeSet(leftOp, this.currUnit);
                     out.add(leftOp);
                     analyzedValues.add(stmt);
                     System.out.println("Source identified and tainted: " + leftOp);
                 }
-            } else if (unit instanceof InvokeStmt) {
-                InvokeStmt invokeStmt = (InvokeStmt) unit;
-                InvokeExpr invokeExpr = invokeStmt.getInvokeExpr();
-                handleMethodInvocation(invokeExpr, in, out);
-            } else if (unit instanceof ReturnStmt) {
-
             }
 
             if (unit instanceof Stmt) {
@@ -235,126 +283,33 @@ public class Taints {
                     handleInvocation(stmt, in, out);
                 }
             }
+
+            this.prevUnit = unit;
         }
 
-        private void handleFieldAssignment(Value leftOp, Value rightOp, FlowSet in, FlowSet out) {
-            PointsToSet rightPts = null;
-            PointsToSet leftPts = null;
+        private void addSrc(Object value, Unit unit, FlowSet flowset) {
+            if (value instanceof InvokeExpr) {
+                InvokeExpr invokeExpr = (InvokeExpr) value;
+                SootMethod method = invokeExpr.getMethod();
+                String classMethodString = method.getDeclaringClass().getName() + "." + method.getName();
 
-            // Handle right operand
-            if (rightOp instanceof FieldRef) {
-                rightPts = getFieldPointsToSet((FieldRef) rightOp);
-            } else if (rightOp instanceof Local) {
-                rightPts = pta.reachingObjects((Local) rightOp);
+
             }
-
-            // Handle left operand
-            if (leftOp instanceof FieldRef) {
-                leftPts = getFieldPointsToSet((FieldRef) leftOp);
-            } else if (leftOp instanceof Local) {
-                leftPts = pta.reachingObjects((Local) leftOp);
-            }
-
-            // Handle intersection and aliasing
-            if (rightPts != null && leftPts != null && !rightPts.isEmpty() && rightPts.hasNonEmptyIntersection(leftPts)) {
-                out.add(leftOp);
-                System.out.println("Alias detected between " + leftOp + " and " + rightOp);
-            }
-        }
-
-        private PointsToSet getFieldPointsToSet(FieldRef fieldRef) {
-            if (!(pta instanceof PAG)) {
-                throw new IllegalStateException("PointsToAnalysis is not PAG as expected.");
-            }
-            PAG pag = (PAG) pta;
-
-            PointsToSet pts;
-            if (fieldRef instanceof InstanceFieldRef) {
-                InstanceFieldRef instanceFieldRef = (InstanceFieldRef) fieldRef;
-                Value base = instanceFieldRef.getBase();
-
-                // If base is a local, fetch its points-to set.
-                if (base instanceof Local) {
-                    pts = pag.reachingObjects((Local) base, fieldRef.getField());
-                } else {
-                    pts = new HashPointsToSet(fieldRef.getType(), pag);
-                }
-            } else if (fieldRef instanceof StaticFieldRef) {
-                // Handle static fields differently if required
-                pts = new HashPointsToSet(fieldRef.getType(), pag);
-            } else {
-                pts = new HashPointsToSet(fieldRef.getType(), pag);
-            }
-
-            return pts;
-        }
-
-
-        private boolean taintSource(Value val) {
-            // Implement logic to determine if a value is a taint source
-
-            return val instanceof NewExpr;
         }
 
         private void handleMethodInvocation(InvokeExpr invokeExpr, FlowSet in, FlowSet out) {
-            SootMethod method = invokeExpr.getMethod();
-
-            if (isResourceCloseMethod(method)) {
-                return; //Check whether the method is a resource closing method, if so, do not process it
-            }
-
-            List<Value> args = invokeExpr.getArgs();
-
-            System.out.println("Method call: " + method.getSignature() + " with arguments " + args);
-
-            if (methodExitMap.containsKey(method)) {
-                FlowSet methodExitSet = methodExitMap.get(method);
-                out.union(methodExitSet, out); // Update the current taint set with the taint set of the called method
-            }
-            // Propagate taint from actual parameters to formal parameters
-            boolean isArgTainted = false;
-            for (int i = 0; i < args.size(); i++) {
-                Value arg = args.get(i);
+            // Check for taint in arguments and propagate to method's context if required
+            for (Value arg : invokeExpr.getArgs()) {
                 if (in.contains(arg)) {
-                    if (!methodEntryMap.containsKey(method)) {
-                        methodEntryMap.put(method, new ArraySparseSet());
-                    }
-                    methodEntryMap.get(method).add(arg);
-                    isArgTainted = true;
-                    System.out.println("Argument " + arg + " is tainted.");
+                    System.out.println("Argument tainted: " + arg);
                 }
             }
 
-            if (isArgTainted) {
-                System.out.println("Arguments tainted for method " + method.getSignature());
-            }
-
-            // If the method has been analyzed and we have exit information, propagate it back
-            if (methodExitMap.containsKey(method)) {
-                FlowSet methodExitSet = methodExitMap.get(method);
-                if (invokeExpr instanceof DefinitionStmt) {
-                    DefinitionStmt def = (DefinitionStmt) invokeExpr;
-                    Value leftOp = def.getLeftOp();
-                    if (!methodExitSet.isEmpty()) {
-                        out.add(leftOp);
-                        System.out.println("Taint propagated to " + leftOp);
-                    }
-                } else {
-                    out.union(methodExitSet, out);
-                }
-            }
-
-        }
-
-        private boolean isResourceCloseMethod(SootMethod method) {
-            String methodName = method.getName();
-            return methodName.equals("close") && method.getDeclaringClass().getType().toString().matches("java.sql.Connection|java.util.Scanner");
         }
 
         private void handleInvocation(Stmt stmt, FlowSet in, FlowSet out) {
             InvokeExpr invokeExpr = stmt.getInvokeExpr();
             if (isSink(stmt)) {
-                System.out.println("Sink detected: " + stmt);
                 for (Value arg : invokeExpr.getArgs()) {
                     if (in.contains(arg)) {
                         System.out.println("Detected potential SQL Injection: " + stmt);
@@ -364,32 +319,113 @@ public class Taints {
             }
         }
 
-        @Override
-        protected void merge(FlowSet in1, FlowSet in2, FlowSet out) {
-            in1.union(in2, out);
-        }
-
-        @Override
-        protected void copy(FlowSet source, FlowSet dest) {
-            source.copy(dest);
-        }
-
-        private boolean isSource(Value value) {
+        private boolean isSource(Object value) {
             if (value instanceof InvokeExpr) {
                 InvokeExpr invokeExpr = (InvokeExpr) value;
                 SootMethod method = invokeExpr.getMethod();
-                return method.getDeclaringClass().getName().equals("java.util.Scanner") &&
-                        method.getName().equals("nextLine");
+                String classMethodString = method.getDeclaringClass().getName() + "." + method.getName();
+                for (String src : TAINT_SRCS) {
+                    if (classMethodString.equals(src)) {
+                        return true;
+                    }
+                }
             }
             return false;
+        }
+
+        // store[x] = store[x] union {u}
+        private void storeAdd(Value v, Unit src) {
+            if (this.currUnit == null) {
+                throw new IllegalArgumentException("storeClear: currUnit is null.");
+            }
+
+            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(this.currUnit, k -> new HashMap<>());
+            Set<Unit> unitSet = valueMap.computeIfAbsent(v, k -> new HashSet<>());
+
+            unitSet.add(src);
+        }
+
+        // store[x] = {u}
+        private void storeSet(Value v, Unit src) {
+            if (this.currUnit == null) {
+                throw new IllegalArgumentException("storeClear: currUnit is null.");
+            }
+
+            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(this.currUnit, k -> new HashMap<>());
+            Set<Unit> unitSet = new HashSet<>();
+            unitSet.add(src);
+
+            valueMap.put(v, unitSet);
+        }
+
+        // store[x] = {}
+        private void storeClear(Value v) {
+            if (this.currUnit == null) {
+                throw new IllegalArgumentException("storeClear: Unit is null.");
+            }
+
+            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(this.currUnit, k -> new HashMap<>());
+            Set<Unit> unitSet = new HashSet<>();
+
+            valueMap.put(v, unitSet);
+        }
+
+        // always gets from curr unit
+        // USE WITH CAUTION: ability to access outside of currUnit
+        private HashMap<Value, Set<Unit>> storeGetMap(Unit u) {
+            if (u == null) {
+                return new HashMap<Value, Set<Unit>>();
+            }
+
+            HashMap<Value, Set<Unit>> valueMap = store.get(u);
+            if (valueMap == null) {
+                throw new IllegalArgumentException("storeGet: Unit " + u + " not found in store.");
+            }
+
+            return valueMap;
+        }
+
+        // overwrites u2 with u1's value with deep copy
+        private void storeCopy(Unit u1, Unit u2) {
+            HashMap<Value, Set<Unit>> u1set = storeGetMap(u1);
+            HashMap<Value, Set<Unit>> newMap = new HashMap<>();
+
+            for (Map.Entry<Value, Set<Unit>> entry : u1set.entrySet()) {
+                Set<Unit> newSet = new HashSet<>(entry.getValue());
+                newMap.put(entry.getKey(), newSet);
+            }
+
+            store.put(u2, newMap);
+        }
+
+        private Set<Unit> taints(Value v) {
+            if (this.currUnit == null) {
+                return new HashSet<>();
+            }
+
+            HashMap<Value, Set<Unit>> valueMap = store.get(this.currUnit);
+            if (valueMap == null) {
+                throw new IllegalArgumentException("storeGet: currUnit " + this.currUnit + " not found in store.");
+            }
+
+            Set<Unit> unitSet = valueMap.get(v);
+            if (unitSet == null) {
+                throw new IllegalArgumentException("storeGet: Value " + v + " not found in store.");
+            }
+
+            return unitSet;
         }
 
         private boolean isSink(Stmt stmt) {
             if (stmt.containsInvokeExpr()) {
                 InvokeExpr invokeExpr = stmt.getInvokeExpr();
                 SootMethod method = invokeExpr.getMethod();
-                return method.getDeclaringClass().getName().equals("java.sql.Statement") &&
-                        (method.getName().equals("executeQuery") || method.getName().equals("executeUpdate") || method.getName().equals("execute"));
+                String classMethodString = method.getDeclaringClass().getName() + "." + method.getName();
+                for (String snk : TAINT_SNKS) {
+                    if (classMethodString.equals(snk)) {
+                        return true;
+                    }
+                }
             }
             return false;
         }

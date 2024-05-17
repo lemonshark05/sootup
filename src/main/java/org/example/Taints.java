@@ -4,11 +4,8 @@ import soot.*;
 import soot.jimple.*;
 import soot.jimple.internal.JAssignStmt;
 import soot.jimple.toolkits.callgraph.CallGraph;
-import soot.jimple.toolkits.callgraph.Edge;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 import soot.toolkits.graph.UnitGraph;
-import soot.toolkits.scalar.ArraySparseSet;
-import soot.toolkits.scalar.FlowSet;
 import soot.toolkits.scalar.ForwardFlowAnalysis;
 
 import java.util.*;
@@ -36,6 +33,8 @@ public class Taints {
         PackManager.v().runPacks();
 
         analyzeMethodByName(sootClass, TARGET_METHOD_NAME); // intra-method
+
+
     }
 
     private static void printJimple(SootClass sootClass) {
@@ -100,23 +99,18 @@ public class Taints {
         Body body = method.retrieveActiveBody();
         MyTaintAnalysis analysis = new MyTaintAnalysis(new ExceptionalUnitGraph(body));
         analysis.printResults();
+        System.out.println();
+        System.out.println("=========TAINT INFORMATION===========");
+        System.out.println(analysis.getTaintInfoString());
     }
 
-    // TEMPORARILY only dealing with Local, would need to change going forwards.
-    private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, FlowSet> {
+    private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, TaintStore<Value, Unit>> {
         private Body body;
         private Set<Unit> analyzedValues;
 
-        private Unit prevUnit;
-        private Unit currUnit;
-
         // using unit as an identifier for both program point and src
         // @TODO this will have to go become FlowSet for flowThrough eventually
-        private HashMap<Unit, HashMap<Value, Set<Unit>>> store;
-
-        // assign identifier to source and sink units, useful at all?
-        private HashMap<Unit, String> srcs; // @TODO create addSrc method to like a hashcons
-        private HashMap<Unit, String> snks; // @TODO create addSnk method to like a hashcons
+        private Map<Unit, Set<Unit>> sinkToSourceMap;
 
         private PointsToAnalysis pta;
 
@@ -124,12 +118,8 @@ public class Taints {
             super(graph);
             this.body = ((ExceptionalUnitGraph) graph).getBody();
             this.analyzedValues = new HashSet<>();
-            this.store = new HashMap<>();
+            this.sinkToSourceMap = new LinkedHashMap<>();
             this.pta = Scene.v().getPointsToAnalysis();
-
-            // im just breaking the abstract syntax (for now)
-            this.prevUnit = null;
-            this.currUnit = null; // @TODO likely not necessary
             doAnalysis();
 
             /*
@@ -149,34 +139,31 @@ public class Taints {
         }
 
         @Override
-        protected void merge(FlowSet in1, FlowSet in2, FlowSet out) {
+        protected void merge(TaintStore<Value, Unit> in1, TaintStore<Value, Unit> in2, TaintStore<Value, Unit> out) {
             in1.union(in2, out);
         }
 
         @Override
-        protected void copy(FlowSet source, FlowSet dest) {
+        protected void copy(TaintStore<Value, Unit> source, TaintStore<Value, Unit> dest) {
             source.copy(dest);
         }
 
         // start with no taints
         @Override
-        protected FlowSet entryInitialFlow() {
-            return new ArraySparseSet();
+        protected TaintStore<Value, Unit> entryInitialFlow() {
+            return new TaintStore<Value, Unit>();
         }
 
         // new set with no taints
         @Override
-        protected FlowSet newInitialFlow() {
-            return new ArraySparseSet();
+        protected TaintStore<Value, Unit> newInitialFlow() {
+            return new TaintStore<Value, Unit>();
         }
 
         @Override
-        protected void flowThrough(FlowSet in, Unit unit, FlowSet out) {
-
-            this.currUnit = unit;
+        protected void flowThrough(TaintStore<Value, Unit> in, Unit unit, TaintStore<Value, Unit> out) {
 
             in.copy(out); // set current set of tainted vars to previous instruction's set
-            storeCopy(this.prevUnit, this.currUnit); // @TODO eventually replaced with FlowSet
 
             if (unit instanceof JAssignStmt) {
                 JAssignStmt stmt = (JAssignStmt) unit;
@@ -196,37 +183,32 @@ public class Taints {
                 // Propagate taint if the right side is already tainted
                 if (rightOp instanceof InvokeExpr) {
                     InvokeExpr invokeExpr = (InvokeExpr) rightOp;
-                    boolean tainted = false;
 
                     // Check for instance method calls
                     if (invokeExpr instanceof InstanceInvokeExpr) {
                         InstanceInvokeExpr instanceInvoke = (InstanceInvokeExpr) invokeExpr;
 
-                        Set<Unit> taintedBy = taints(instanceInvoke.getBase());
+                        Set<Unit> taintedBy = in.getTaints(instanceInvoke.getBase());
                         for (Unit taint : taintedBy) {
 
                         }
 
-                        // Check if the base object is tainted
-                        if (in.contains(instanceInvoke.getBase())) {
-
-                            tainted = true;
-                        }
+                        out.propagateTaints(instanceInvoke.getBase(), leftOp);
                     }
 
                     // Check if any argument is tainted
                     for (Value arg : invokeExpr.getArgs()) {
-                        if (in.contains(arg)) {
-                            tainted = true;
-                            break;
-                        }
+                        out.propagateTaints(arg, leftOp);
                     }
 
+                    /*
+                    @LEGACY
                     if (tainted) {
-                        out.add(leftOp);
+                        out.addTaint(leftOp, unit);
                         analyzedValues.add(stmt);
                         System.out.println("Tainted " + leftOp + " due to tainted argument or base in: " + rightOp);
                     }
+                     */
                 }
 
                 if (unit instanceof InvokeStmt) {
@@ -238,40 +220,57 @@ public class Taints {
                 if (unit instanceof ReturnStmt) {
                     ReturnStmt returnStmt = (ReturnStmt) unit;
                     Value returnValue = returnStmt.getOp();
-                    if (in.contains(returnValue)) {
+                    if (in.isTainted(returnValue)) {
 
                     }
                 }
 
                 // Check if the leftOp points to any object that rightOp points to (aliasing)
-                if (rightOp instanceof Local && in.contains(rightOp)) {
-                    out.add(leftOp);
+                // COPY INSTRUCTION, SET INSTEAD OF ADD
+                if (rightOp instanceof Local) {
+                    out.setTaints(leftOp, out.getTaints(rightOp));
                     analyzedValues.add(stmt);
                     System.out.println("Tainted " + leftOp + " due to tainted right operand: " + rightOp);
                 }
 
+                // attempt at generalized binop
+                if (rightOp instanceof BinopExpr) {
+                    BinopExpr binopexpr = (BinopExpr) rightOp;
+
+                    out.propagateTaints(binopexpr.getOp1(), leftOp);
+                    out.propagateTaints(binopexpr.getOp2(), leftOp);
+                }
+
+                // @TODO can we generalize this to be used with any BinopExpr
+                /*
                 // Special handling for string concatenations
+                LEGACY
                 if (rightOp instanceof BinopExpr && rightOp.getType() instanceof RefType &&
                         ((RefType)rightOp.getType()).toString().equals("java.lang.String")) {
                     BinopExpr expr = (BinopExpr) rightOp;
-                    if (in.contains(expr.getOp1()) || in.contains(expr.getOp2())) {
-                        out.add(leftOp);
+                    if (in.isTainted(expr.getOp1()) || in.isTainted(expr.getOp2())) {
+                        out.addTaint(leftOp, unit);
                         analyzedValues.add(stmt);
                         System.out.println("Tainting due to string concatenation in: " + stmt);
                     }
                 }
+                 */
 
                 // Directly propagate taint from right to left if right is tainted
-                if (in.contains(rightOp)) {
-                    out.add(leftOp);
+                // @TODO is this a catch-all?
+                out.propagateTaints(rightOp, leftOp);
+                /*
+                LEGACY
+                if (in.isTainted(rightOp)) {
+                    out.addTaint(leftOp, unit);
                     analyzedValues.add(stmt);
                     System.out.println("Tainted " + leftOp + " due to tainted right operand: " + rightOp);
                 }
+                 */
 
                 // Check and mark the sources
                 if (isSource(rightOp)) {
-                    storeSet(leftOp, this.currUnit);
-                    out.add(leftOp);
+                    out.setTaint(leftOp, unit);
                     analyzedValues.add(stmt);
                     System.out.println("Source identified and tainted: " + leftOp);
                 }
@@ -280,38 +279,62 @@ public class Taints {
             if (unit instanceof Stmt) {
                 Stmt stmt = (Stmt) unit;
                 if (stmt.containsInvokeExpr()) {
-                    handleInvocation(stmt, in, out);
+                    checkStmtForSink(stmt, in, out);
                 }
             }
-
-            this.prevUnit = unit;
         }
 
-        private void addSrc(Object value, Unit unit, FlowSet flowset) {
-            if (value instanceof InvokeExpr) {
-                InvokeExpr invokeExpr = (InvokeExpr) value;
-                SootMethod method = invokeExpr.getMethod();
-                String classMethodString = method.getDeclaringClass().getName() + "." + method.getName();
+        private void checkStmtForSink(Stmt stmt, TaintStore<Value, Unit> in, TaintStore<Value, Unit> out) {
+            if (stmt.containsInvokeExpr()) {
+                InvokeExpr invokeExpr = stmt.getInvokeExpr();
+                if (isSink(stmt)) {
+                    for (Value arg : invokeExpr.getArgs()) {
+                        // @TODO when should we sink it? what happens if we sink and then the taints get reset?
+                        // right it adds in every source that it encounters
+                        Set<Unit> sourceSet = sinkToSourceMap.computeIfAbsent(stmt, k -> new LinkedHashSet<>());
+                        sourceSet.addAll(in.getTaints(arg));
 
-
+                        /*
+                        LEGACY
+                        if (in.isTainted(arg)) {
+                            System.out.println("Detected potential SQL Injection: " + stmt);
+                            analyzedValues.add(stmt);
+                        }
+                         */
+                    }
+                }
             }
         }
 
-        private void handleMethodInvocation(InvokeExpr invokeExpr, FlowSet in, FlowSet out) {
+        private String getTaintInfoString() {
+            StringBuilder output = new StringBuilder();
+            for (Map.Entry<Unit, Set<Unit>> snksrcentry : sinkToSourceMap.entrySet()) {
+                Unit snk = snksrcentry.getKey();
+                for (Unit src : snksrcentry.getValue()) {
+                    output.append("{").append(src.toString()).append("}");
+                    output.append(" --> ");
+                    output.append("{").append(snk.toString()).append("}");
+                    output.append('\n');
+                }
+            }
+            return output.toString();
+        }
+
+        private void handleMethodInvocation(InvokeExpr invokeExpr, TaintStore<Value, Unit> in, TaintStore<Value, Unit> out) {
             // Check for taint in arguments and propagate to method's context if required
             for (Value arg : invokeExpr.getArgs()) {
-                if (in.contains(arg)) {
+                if (in.isTainted(arg)) {
                     System.out.println("Argument tainted: " + arg);
                 }
             }
 
         }
 
-        private void handleInvocation(Stmt stmt, FlowSet in, FlowSet out) {
+        private void handleInvocation(Stmt stmt, TaintStore<Value, Unit> in, TaintStore<Value, Unit> out) {
             InvokeExpr invokeExpr = stmt.getInvokeExpr();
             if (isSink(stmt)) {
                 for (Value arg : invokeExpr.getArgs()) {
-                    if (in.contains(arg)) {
+                    if (in.isTainted(arg)) {
                         System.out.println("Detected potential SQL Injection: " + stmt);
                         analyzedValues.add(stmt);
                     }
@@ -331,89 +354,6 @@ public class Taints {
                 }
             }
             return false;
-        }
-
-        // store[x] = store[x] union {u}
-        private void storeAdd(Value v, Unit src) {
-            if (this.currUnit == null) {
-                throw new IllegalArgumentException("storeClear: currUnit is null.");
-            }
-
-            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(this.currUnit, k -> new HashMap<>());
-            Set<Unit> unitSet = valueMap.computeIfAbsent(v, k -> new HashSet<>());
-
-            unitSet.add(src);
-        }
-
-        // store[x] = {u}
-        private void storeSet(Value v, Unit src) {
-            if (this.currUnit == null) {
-                throw new IllegalArgumentException("storeClear: currUnit is null.");
-            }
-
-            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(this.currUnit, k -> new HashMap<>());
-            Set<Unit> unitSet = new HashSet<>();
-            unitSet.add(src);
-
-            valueMap.put(v, unitSet);
-        }
-
-        // store[x] = {}
-        private void storeClear(Value v) {
-            if (this.currUnit == null) {
-                throw new IllegalArgumentException("storeClear: Unit is null.");
-            }
-
-            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(this.currUnit, k -> new HashMap<>());
-            Set<Unit> unitSet = new HashSet<>();
-
-            valueMap.put(v, unitSet);
-        }
-
-        // always gets from curr unit
-        // USE WITH CAUTION: ability to access outside of currUnit
-        private HashMap<Value, Set<Unit>> storeGetMap(Unit u) {
-            if (u == null) {
-                return new HashMap<Value, Set<Unit>>();
-            }
-
-            HashMap<Value, Set<Unit>> valueMap = store.get(u);
-            if (valueMap == null) {
-                throw new IllegalArgumentException("storeGet: Unit " + u + " not found in store.");
-            }
-
-            return valueMap;
-        }
-
-        // overwrites u2 with u1's value with deep copy
-        private void storeCopy(Unit u1, Unit u2) {
-            HashMap<Value, Set<Unit>> u1set = storeGetMap(u1);
-            HashMap<Value, Set<Unit>> newMap = new HashMap<>();
-
-            for (Map.Entry<Value, Set<Unit>> entry : u1set.entrySet()) {
-                Set<Unit> newSet = new HashSet<>(entry.getValue());
-                newMap.put(entry.getKey(), newSet);
-            }
-
-            store.put(u2, newMap);
-        }
-
-        private Set<Unit> taints(Value v) {
-            if (this.currUnit == null) {
-                return new HashSet<>();
-            }
-
-            HashMap<Value, Set<Unit>> valueMap = store.get(this.currUnit);
-            if (valueMap == null) {
-                throw new IllegalArgumentException("storeGet: currUnit " + this.currUnit + " not found in store.");
-            }
-
-            Set<Unit> unitSet = valueMap.get(v);
-            if (unitSet == null) {
-                throw new IllegalArgumentException("storeGet: Value " + v + " not found in store.");
-            }
-
-            return unitSet;
         }
 
         private boolean isSink(Stmt stmt) {

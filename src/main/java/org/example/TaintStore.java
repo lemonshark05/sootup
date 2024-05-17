@@ -29,8 +29,10 @@ public class TaintStore<K, V> implements FlowSet<Map.Entry<K, Set<V>>> {
     }
 
     // store[x] = {src}
-    public void setTaint(K key, Set<V> src) {
-        setTaints(key, new LinkedHashSet<>(src));
+    public void setTaint(K key, V src) {
+        LinkedHashSet<V> newSet = new LinkedHashSet<>();
+        newSet.add(src);
+        setTaints(key, newSet);
     }
 
     // store[x] = srcs
@@ -40,6 +42,10 @@ public class TaintStore<K, V> implements FlowSet<Map.Entry<K, Set<V>>> {
 
     public void clearTaints(K key) {
         store.put(key, new LinkedHashSet<>());
+    }
+
+    public boolean isTainted(K key) {
+        return store.containsKey(key);
     }
 
     // returns empty set if key doesn't exist
@@ -58,7 +64,7 @@ public class TaintStore<K, V> implements FlowSet<Map.Entry<K, Set<V>>> {
     @Override
     public FlowSet<Map.Entry<K, Set<V>>> clone() {
         // why do I have to call super.clone if I'm unsure it does a deep copy here
-        TaintStore<K, V> clonedStore = new TaintStore<K, V>();
+        TaintStore<K, V> clonedStore = new TaintStore<>();
         for (Map.Entry<K, Set<V>> entry : this.store.entrySet()) {
             clonedStore.store.put(entry.getKey(), new LinkedHashSet<>(entry.getValue()));
         }
@@ -67,7 +73,7 @@ public class TaintStore<K, V> implements FlowSet<Map.Entry<K, Set<V>>> {
 
     @Override
     public FlowSet<Map.Entry<K, Set<V>>> emptySet() {
-        return new TaintStore<K, V>();
+        return new TaintStore<>();
     }
 
     @Override

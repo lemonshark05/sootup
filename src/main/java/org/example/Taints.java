@@ -107,6 +107,9 @@ public class Taints {
         private Body body;
         private Set<Unit> analyzedValues;
 
+        private Unit prevUnit;
+        private Unit currUnit;
+
         // using unit as an identifier for both program point and src
         private HashMap<Unit, HashMap<Value, Set<Unit>>> store; // does flowset provide the same function
 
@@ -122,6 +125,10 @@ public class Taints {
             this.analyzedValues = new HashSet<>();
             this.store = new HashMap<>();
             this.pta = Scene.v().getPointsToAnalysis();
+
+            // im just breaking the abstract syntax (for now)
+            this.prevUnit = null;
+            this.currUnit = null;
             doAnalysis();
 
             /*
@@ -165,6 +172,7 @@ public class Taints {
         protected void flowThrough(FlowSet in, Unit unit, FlowSet out) {
 
             in.copy(out);
+            this.currUnit = unit;
 
             if (unit instanceof JAssignStmt) {
                 JAssignStmt stmt = (JAssignStmt) unit;
@@ -315,6 +323,10 @@ public class Taints {
 
         // store[x] = store[x] union {u}
         private void storeAdd(Unit u, Value v) {
+            if (u == null) {
+                throw new IllegalArgumentException("storeClear: Unit is null.");
+            }
+
             HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
             Set<Unit> unitSet = valueMap.computeIfAbsent(v, k -> new HashSet<>());
 
@@ -323,6 +335,10 @@ public class Taints {
 
         // store[x] = {u}
         private void storeSet(Unit u, Value v) {
+            if (u == null) {
+                throw new IllegalArgumentException("storeClear: Unit is null.");
+            }
+
             HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
             Set<Unit> unitSet = new HashSet<>();
             unitSet.add(u);
@@ -332,6 +348,10 @@ public class Taints {
 
         // store[x] = {}
         private void storeClear(Unit u, Value v) {
+            if (u == null) {
+                throw new IllegalArgumentException("storeClear: Unit is null.");
+            }
+
             HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
             Set<Unit> unitSet = new HashSet<>();
 
@@ -340,6 +360,10 @@ public class Taints {
 
         // SELF REMINDER IT'S A REFERENCE YOU CAN MODIFY IT
         private Set<Unit> storeGet(Unit u, Value v) {
+            if (u == null) {
+                return new HashSet<>();
+            }
+
             HashMap<Value, Set<Unit>> valueMap = store.get(u);
             if (valueMap == null) {
                 throw new IllegalArgumentException("storeGet: Unit " + u + " not found in store.");

@@ -14,7 +14,7 @@ public class Taints {
 
     // Debug variables
     private static final String TARGET_METHOD_NAME = "loginUsers";
-    private static final String TARGET_PACKAGE_NAME = "org.example.Demo1";
+    private static final String TARGET_PACKAGE_NAME = "org.example.Demo5";
 
     // @TODO case sensitivity?
     private static final String[] TAINT_SRCS = {
@@ -157,26 +157,32 @@ public class Taints {
                 // Check and handle rightOp if it's an instance of StaticFieldRef
                 if (rightOp instanceof StaticFieldRef) {
                     // Handle static field reference specifically
-                    // Maybe check if it's a source of taint or something similar
+                    out.propagateTaints(rightOp, leftOp);
                 }
 
                 // Propagate taint if the right side is already tainted
                 if (rightOp instanceof InvokeExpr) {
                     InvokeExpr invokeExpr = (InvokeExpr) rightOp;
 
-                    // Check for instance method calls
+                    // Handle instance method invocation expressions
                     if (invokeExpr instanceof InstanceInvokeExpr) {
                         InstanceInvokeExpr instanceInvoke = (InstanceInvokeExpr) invokeExpr;
-
-                        Set<Unit> taintedBy = in.getTaints(instanceInvoke.getBase());
-                        for (Unit taint : taintedBy) {
-
-                        }
-
                         out.propagateTaints(instanceInvoke.getBase(), leftOp);
                     }
 
-                    // Check if any argument is tainted
+                    // Handle static method invocation expressions
+                    if (invokeExpr instanceof StaticInvokeExpr) {
+                        // Add specific handling for static method invocations if needed
+                        out.propagateTaints(invokeExpr, leftOp);
+                    }
+
+                    // Handle dynamic method invocation expressions
+                    if (invokeExpr instanceof DynamicInvokeExpr) {
+                        // Add specific handling for dynamic method invocations if needed
+                        out.propagateTaints(invokeExpr, leftOp);
+                    }
+
+                    // Handle arguments of the invocation expression
                     for (Value arg : invokeExpr.getArgs()) {
                         out.propagateTaints(arg, leftOp);
                     }

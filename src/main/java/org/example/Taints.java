@@ -111,7 +111,8 @@ public class Taints {
         private Unit currUnit;
 
         // using unit as an identifier for both program point and src
-        private HashMap<Unit, HashMap<Value, Set<Unit>>> store; // does flowset provide the same function
+        // @TODO this will have to go become FlowSet for flowThrough eventually
+        private HashMap<Unit, HashMap<Value, Set<Unit>>> store;
 
         // assign identifier to source and sink units, useful at all?
         private HashMap<Unit, String> srcs; // @TODO create addSrc method to like a hashcons
@@ -128,7 +129,7 @@ public class Taints {
 
             // im just breaking the abstract syntax (for now)
             this.prevUnit = null;
-            this.currUnit = null;
+            this.currUnit = null; // @TODO likely not necessary
             doAnalysis();
 
             /*
@@ -136,7 +137,7 @@ public class Taints {
             System.out.println("== THE STORE ==");
             System.out.println(store.toString());
             System.out.println();
-            */
+
 
             System.out.println("graph check debug start+++++++++++++++++++++++++++++++++++");
             for (Map.Entry<Unit, FlowSet> i : this.unitToAfterFlow.entrySet()) {
@@ -144,6 +145,7 @@ public class Taints {
                 System.out.println(stmt.toString());
             }
             System.out.println("graph check debug end+++++++++++++++++++++++++++++++++++");
+            */
         }
 
         @Override
@@ -171,8 +173,10 @@ public class Taints {
         @Override
         protected void flowThrough(FlowSet in, Unit unit, FlowSet out) {
 
-            in.copy(out);
             this.currUnit = unit;
+
+            in.copy(out); // set current set of tainted vars to previous instruction's set
+            storeCopy(this.prevUnit, this.currUnit); // @TODO eventually replaced with FlowSet
 
             if (unit instanceof JAssignStmt) {
                 JAssignStmt stmt = (JAssignStmt) unit;
@@ -197,8 +201,15 @@ public class Taints {
                     // Check for instance method calls
                     if (invokeExpr instanceof InstanceInvokeExpr) {
                         InstanceInvokeExpr instanceInvoke = (InstanceInvokeExpr) invokeExpr;
+
+                        Set<Unit> taintedBy = taints(instanceInvoke.getBase());
+                        for (Unit taint : taintedBy) {
+
+                        }
+
                         // Check if the base object is tainted
                         if (in.contains(instanceInvoke.getBase())) {
+
                             tainted = true;
                         }
                     }
@@ -259,8 +270,7 @@ public class Taints {
 
                 // Check and mark the sources
                 if (isSource(rightOp)) {
-                    System.out.println("++++++++++++++++++++leftOp.toString():" + leftOp.toString());
-                    storeSet(unit, leftOp);
+                    storeSet(leftOp, this.currUnit);
                     out.add(leftOp);
                     analyzedValues.add(stmt);
                     System.out.println("Source identified and tainted: " + leftOp);
@@ -273,6 +283,8 @@ public class Taints {
                     handleInvocation(stmt, in, out);
                 }
             }
+
+            this.prevUnit = unit;
         }
 
         private void addSrc(Object value, Unit unit, FlowSet flowset) {
@@ -322,51 +334,78 @@ public class Taints {
         }
 
         // store[x] = store[x] union {u}
-        private void storeAdd(Unit u, Value v) {
-            if (u == null) {
-                throw new IllegalArgumentException("storeClear: Unit is null.");
+        private void storeAdd(Value v, Unit src) {
+            if (this.currUnit == null) {
+                throw new IllegalArgumentException("storeClear: currUnit is null.");
             }
 
-            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
+            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(this.currUnit, k -> new HashMap<>());
             Set<Unit> unitSet = valueMap.computeIfAbsent(v, k -> new HashSet<>());
 
-            unitSet.add(u);
+            unitSet.add(src);
         }
 
         // store[x] = {u}
-        private void storeSet(Unit u, Value v) {
-            if (u == null) {
-                throw new IllegalArgumentException("storeClear: Unit is null.");
+        private void storeSet(Value v, Unit src) {
+            if (this.currUnit == null) {
+                throw new IllegalArgumentException("storeClear: currUnit is null.");
             }
 
-            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
+            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(this.currUnit, k -> new HashMap<>());
             Set<Unit> unitSet = new HashSet<>();
-            unitSet.add(u);
+            unitSet.add(src);
 
             valueMap.put(v, unitSet);
         }
 
         // store[x] = {}
-        private void storeClear(Unit u, Value v) {
-            if (u == null) {
+        private void storeClear(Value v) {
+            if (this.currUnit == null) {
                 throw new IllegalArgumentException("storeClear: Unit is null.");
             }
 
-            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
+            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(this.currUnit, k -> new HashMap<>());
             Set<Unit> unitSet = new HashSet<>();
 
             valueMap.put(v, unitSet);
         }
 
-        // SELF REMINDER IT'S A REFERENCE YOU CAN MODIFY IT
-        private Set<Unit> storeGet(Unit u, Value v) {
+        // always gets from curr unit
+        // USE WITH CAUTION: ability to access outside of currUnit
+        private HashMap<Value, Set<Unit>> storeGetMap(Unit u) {
             if (u == null) {
-                return new HashSet<>();
+                return new HashMap<Value, Set<Unit>>();
             }
 
             HashMap<Value, Set<Unit>> valueMap = store.get(u);
             if (valueMap == null) {
                 throw new IllegalArgumentException("storeGet: Unit " + u + " not found in store.");
+            }
+
+            return valueMap;
+        }
+
+        // overwrites u2 with u1's value with deep copy
+        private void storeCopy(Unit u1, Unit u2) {
+            HashMap<Value, Set<Unit>> u1set = storeGetMap(u1);
+            HashMap<Value, Set<Unit>> newMap = new HashMap<>();
+
+            for (Map.Entry<Value, Set<Unit>> entry : u1set.entrySet()) {
+                Set<Unit> newSet = new HashSet<>(entry.getValue());
+                newMap.put(entry.getKey(), newSet);
+            }
+
+            store.put(u2, newMap);
+        }
+
+        private Set<Unit> taints(Value v) {
+            if (this.currUnit == null) {
+                return new HashSet<>();
+            }
+
+            HashMap<Value, Set<Unit>> valueMap = store.get(this.currUnit);
+            if (valueMap == null) {
+                throw new IllegalArgumentException("storeGet: currUnit " + this.currUnit + " not found in store.");
             }
 
             Set<Unit> unitSet = valueMap.get(v);

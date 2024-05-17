@@ -183,7 +183,6 @@ public class Taints {
                 // Propagate taint if the right side is already tainted
                 if (rightOp instanceof InvokeExpr) {
                     InvokeExpr invokeExpr = (InvokeExpr) rightOp;
-                    boolean tainted = false;
 
                     // Check for instance method calls
                     if (invokeExpr instanceof InstanceInvokeExpr) {
@@ -194,26 +193,22 @@ public class Taints {
 
                         }
 
-                        // Check if the base object is tainted
-                        if (in.isTainted(instanceInvoke.getBase())) {
-
-                            tainted = true;
-                        }
+                        out.propagateTaints(instanceInvoke.getBase(), leftOp);
                     }
 
                     // Check if any argument is tainted
                     for (Value arg : invokeExpr.getArgs()) {
-                        if (in.isTainted(arg)) {
-                            tainted = true;
-                            break;
-                        }
+                        out.propagateTaints(arg, leftOp);
                     }
 
+                    /*
+                    @LEGACY
                     if (tainted) {
                         out.addTaint(leftOp, unit);
                         analyzedValues.add(stmt);
                         System.out.println("Tainted " + leftOp + " due to tainted argument or base in: " + rightOp);
                     }
+                     */
                 }
 
                 if (unit instanceof InvokeStmt) {
@@ -231,13 +226,25 @@ public class Taints {
                 }
 
                 // Check if the leftOp points to any object that rightOp points to (aliasing)
-                if (rightOp instanceof Local && in.isTainted(rightOp)) {
-                    out.addTaint(leftOp, unit);
+                // COPY INSTRUCTION, SET INSTEAD OF ADD
+                if (rightOp instanceof Local) {
+                    out.setTaints(leftOp, out.getTaints(rightOp));
                     analyzedValues.add(stmt);
                     System.out.println("Tainted " + leftOp + " due to tainted right operand: " + rightOp);
                 }
 
+                // attempt at generalized binop
+                if (rightOp instanceof BinopExpr) {
+                    BinopExpr binopexpr = (BinopExpr) rightOp;
+
+                    out.propagateTaints(binopexpr.getOp1(), leftOp);
+                    out.propagateTaints(binopexpr.getOp2(), leftOp);
+                }
+
+                // @TODO can we generalize this to be used with any BinopExpr
+                /*
                 // Special handling for string concatenations
+                LEGACY
                 if (rightOp instanceof BinopExpr && rightOp.getType() instanceof RefType &&
                         ((RefType)rightOp.getType()).toString().equals("java.lang.String")) {
                     BinopExpr expr = (BinopExpr) rightOp;
@@ -247,13 +254,19 @@ public class Taints {
                         System.out.println("Tainting due to string concatenation in: " + stmt);
                     }
                 }
+                 */
 
                 // Directly propagate taint from right to left if right is tainted
+                // @TODO is this a catch-all?
+                out.propagateTaints(rightOp, leftOp);
+                /*
+                LEGACY
                 if (in.isTainted(rightOp)) {
                     out.addTaint(leftOp, unit);
                     analyzedValues.add(stmt);
                     System.out.println("Tainted " + leftOp + " due to tainted right operand: " + rightOp);
                 }
+                 */
 
                 // Check and mark the sources
                 if (isSource(rightOp)) {
@@ -280,10 +293,14 @@ public class Taints {
                         // right it adds in every source that it encounters
                         Set<Unit> sourceSet = sinkToSourceMap.computeIfAbsent(stmt, k -> new LinkedHashSet<>());
                         sourceSet.addAll(in.getTaints(arg));
+
+                        /*
+                        LEGACY
                         if (in.isTainted(arg)) {
                             System.out.println("Detected potential SQL Injection: " + stmt);
                             analyzedValues.add(stmt);
                         }
+                         */
                     }
                 }
             }

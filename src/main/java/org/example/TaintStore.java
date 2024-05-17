@@ -28,6 +28,15 @@ public class TaintStore<K, V> implements FlowSet<Map.Entry<K, Set<V>>> {
         taintSet.add(src);
     }
 
+    public void addTaints(K key, Set<V> src) {
+        Set<V> taintSet = store.computeIfAbsent(key, k -> new LinkedHashSet<>());
+        taintSet.addAll(src);
+    }
+
+    public void propagateTaints(K key1, K key2) {
+        addTaints(key2, getTaints(key1));
+    }
+
     // store[x] = {src}
     public void setTaint(K key, V src) {
         LinkedHashSet<V> newSet = new LinkedHashSet<>();

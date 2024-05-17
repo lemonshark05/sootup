@@ -11,9 +11,7 @@ import soot.toolkits.scalar.ArraySparseSet;
 import soot.toolkits.scalar.FlowSet;
 import soot.toolkits.scalar.ForwardFlowAnalysis;
 
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Set;
+import java.util.*;
 
 public class Taints {
 
@@ -104,9 +102,14 @@ public class Taints {
     }
 
     // TEMPORARILY only dealing with Local, would need to change going forwards.
-    private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, FlowSet<Local>> {
+    private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, FlowSet> {
         private Body body;
         private Set<Unit> analyzedValues;
+        private HashMap<Unit, HashMap<Local, Set<Unit>>> store; // for each statement, stores the mapping of tainted srcs
+
+        // assign identifier to source and sink units
+        private HashMap<Unit, String> srcs; // @TODO create addSrc method to like a hashcons
+        private HashMap<Unit, String> snks; // @TODO create addSnk method to like a hashcons
 
         private PointsToAnalysis pta;
 
@@ -116,10 +119,16 @@ public class Taints {
             this.analyzedValues = new HashSet<>();
             this.pta = Scene.v().getPointsToAnalysis();
             doAnalysis();
+            System.out.println("graph check debug start+++++++++++++++++++++++++++++++++++");
+            for (Map.Entry<Unit, FlowSet> i : this.unitToAfterFlow.entrySet()) {
+                Stmt stmt = (Stmt) i.getKey();
+                System.out.println(stmt.toString());
+            }
+            System.out.println("graph check debug end+++++++++++++++++++++++++++++++++++");
         }
 
         @Override
-        protected void merge(FlowSet<Local> in1, FlowSet<Local> in2, FlowSet<Local> out) {
+        protected void merge(FlowSet in1, FlowSet in2, FlowSet out) {
             in1.union(in2, out);
         }
 
@@ -130,14 +139,14 @@ public class Taints {
 
         // start with no taints
         @Override
-        protected FlowSet<Local> entryInitialFlow() {
-            return new ArraySparseSet<Local>();
+        protected FlowSet entryInitialFlow() {
+            return new ArraySparseSet();
         }
 
         // new set with no taints
         @Override
-        protected FlowSet<Local> newInitialFlow() {
-            return new ArraySparseSet<Local>();
+        protected FlowSet newInitialFlow() {
+            return new ArraySparseSet();
         }
 
         @Override

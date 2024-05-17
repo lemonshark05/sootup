@@ -21,6 +21,10 @@ public class Taints {
     private static final String TARGET_METHOD_NAME = "loginUsers";
     private static final String TARGET_PACKAGE_NAME = "org.example.Demo1";
 
+    // @TODO case sensitivity?
+    private static final String[] TAINT_SRCS = {"scanner.nextLine"};
+    private static final String[] TAINT_SNKS = {"executeQuery"};
+
     public static void main(String[] args) {
         SootClass sootClass = setupSoot(TARGET_PACKAGE_NAME);
         printJimple(sootClass);

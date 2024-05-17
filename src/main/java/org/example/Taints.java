@@ -120,8 +120,17 @@ public class Taints {
             super(graph);
             this.body = ((ExceptionalUnitGraph) graph).getBody();
             this.analyzedValues = new HashSet<>();
+            this.store = new HashMap<>();
             this.pta = Scene.v().getPointsToAnalysis();
             doAnalysis();
+
+            /*
+            System.out.println();
+            System.out.println("== THE STORE ==");
+            System.out.println(store.toString());
+            System.out.println();
+            */
+
             System.out.println("graph check debug start+++++++++++++++++++++++++++++++++++");
             for (Map.Entry<Unit, FlowSet> i : this.unitToAfterFlow.entrySet()) {
                 Stmt stmt = (Stmt) i.getKey();
@@ -243,6 +252,7 @@ public class Taints {
                 // Check and mark the sources
                 if (isSource(rightOp)) {
                     System.out.println("++++++++++++++++++++leftOp.toString():" + leftOp.toString());
+                    storeSet(unit, leftOp);
                     out.add(leftOp);
                     analyzedValues.add(stmt);
                     System.out.println("Source identified and tainted: " + leftOp);

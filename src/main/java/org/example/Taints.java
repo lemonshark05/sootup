@@ -35,7 +35,7 @@ public class Taints {
 
         PackManager.v().runPacks();
 
-        analyzeMethodByName(sootClass, TARGET_METHOD_NAME);
+        analyzeMethodByName(sootClass, TARGET_METHOD_NAME); // intra-method
     }
 
     private static void printJimple(SootClass sootClass) {
@@ -72,6 +72,7 @@ public class Taints {
         return sootClass;
     }
 
+    // intra-method
     @SuppressWarnings("SameParameterValue")
     private static void analyzeMethodByName(SootClass sootClass, String targetMethodName) {
         CallGraph callGraph = Scene.v().getCallGraph();
@@ -105,9 +106,11 @@ public class Taints {
     private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, FlowSet> {
         private Body body;
         private Set<Unit> analyzedValues;
-        private HashMap<Unit, HashMap<Local, Set<Unit>>> store; // for each statement, stores the mapping of tainted srcs
 
-        // assign identifier to source and sink units
+        // using unit as an identifier for both program point and src
+        private HashMap<Unit, HashMap<Value, Set<Unit>>> store; // does flowset provide the same function
+
+        // assign identifier to source and sink units, useful at all?
         private HashMap<Unit, String> srcs; // @TODO create addSrc method to like a hashcons
         private HashMap<Unit, String> snks; // @TODO create addSnk method to like a hashcons
 
@@ -151,6 +154,7 @@ public class Taints {
 
         @Override
         protected void flowThrough(FlowSet in, Unit unit, FlowSet out) {
+
             in.copy(out);
 
             if (unit instanceof JAssignStmt) {
@@ -238,6 +242,7 @@ public class Taints {
 
                 // Check and mark the sources
                 if (isSource(rightOp)) {
+                    System.out.println("++++++++++++++++++++leftOp.toString():" + leftOp.toString());
                     out.add(leftOp);
                     analyzedValues.add(stmt);
                     System.out.println("Source identified and tainted: " + leftOp);
@@ -249,6 +254,16 @@ public class Taints {
                 if (stmt.containsInvokeExpr()) {
                     handleInvocation(stmt, in, out);
                 }
+            }
+        }
+
+        private void addSrc(Object value, Unit unit, FlowSet flowset) {
+            if (value instanceof InvokeExpr) {
+                InvokeExpr invokeExpr = (InvokeExpr) value;
+                SootMethod method = invokeExpr.getMethod();
+                String classMethodString = method.getDeclaringClass().getName() + "." + method.getName();
+
+
             }
         }
 
@@ -286,6 +301,21 @@ public class Taints {
                 }
             }
             return false;
+        }
+
+        private void storeAdd(Unit u, Value v) {
+            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
+            Set<Unit> unitSet = valueMap.computeIfAbsent(v, k -> new HashSet<>());
+
+            unitSet.add(u);
+        }
+
+        private void storeSet(Unit u, Value v) {
+            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
+            Set<Unit> unitSet = new HashSet<>();
+            unitSet.add(u);
+
+            valueMap.put(v, unitSet);
         }
 
         private boolean isSink(Stmt stmt) {

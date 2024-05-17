@@ -22,8 +22,14 @@ public class Taints {
     private static final String TARGET_PACKAGE_NAME = "org.example.Demo1";
 
     // @TODO case sensitivity?
-    private static final String[] TAINT_SRCS = {"scanner.nextLine"};
-    private static final String[] TAINT_SNKS = {"executeQuery"};
+    private static final String[] TAINT_SRCS = {
+            "java.util.Scanner.nextLine"
+    };
+    private static final String[] TAINT_SNKS = {
+            "java.sql.Statement.executeQuery",
+            "java.sql.Statement.executeUpdate",
+            "java.sql.Statement.execute"
+    };
 
     public static void main(String[] args) {
         SootClass sootClass = setupSoot(TARGET_PACKAGE_NAME);
@@ -47,7 +53,7 @@ public class Taints {
             }
         }
         System.out.println("}");
-        System.out.println("END      JIMPLE========================================================================");
+        System.out.println("END JIMPLE=============================================================================");
     }
 
     private static void printMethodJimple(SootMethod method) {
@@ -259,12 +265,16 @@ public class Taints {
             }
         }
 
-        private boolean isSource(Value value) {
+        private boolean isSource(Object value) {
             if (value instanceof InvokeExpr) {
                 InvokeExpr invokeExpr = (InvokeExpr) value;
                 SootMethod method = invokeExpr.getMethod();
-                return method.getDeclaringClass().getName().equals("java.util.Scanner") &&
-                        method.getName().equals("nextLine");
+                String classMethodString = method.getDeclaringClass().getName() + "." + method.getName();
+                for (String src : TAINT_SRCS) {
+                    if (classMethodString.equals(src)) {
+                        return true;
+                    }
+                }
             }
             return false;
         }
@@ -273,8 +283,12 @@ public class Taints {
             if (stmt.containsInvokeExpr()) {
                 InvokeExpr invokeExpr = stmt.getInvokeExpr();
                 SootMethod method = invokeExpr.getMethod();
-                return method.getDeclaringClass().getName().equals("java.sql.Statement") &&
-                        (method.getName().equals("executeQuery") || method.getName().equals("executeUpdate") || method.getName().equals("execute"));
+                String classMethodString = method.getDeclaringClass().getName() + "." + method.getName();
+                for (String snk : TAINT_SNKS) {
+                    if (classMethodString.equals(snk)) {
+                        return true;
+                    }
+                }
             }
             return false;
         }

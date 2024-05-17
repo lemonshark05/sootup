@@ -17,6 +17,19 @@ import java.util.Set;
 
 public class Taints {
 
+    // Debug variables
+    private static final String TARGET_METHOD_NAME = "loginUsers";
+    private static final String TARGET_PACKAGE_NAME = "org.example.Demo1";
+
+    public static void main(String[] args) {
+        SootClass sootClass = setupSoot(TARGET_PACKAGE_NAME);
+        printJimple(sootClass);
+
+        PackManager.v().runPacks();
+
+        analyzeMethodByName(sootClass, TARGET_METHOD_NAME);
+    }
+
     private static void printJimple(SootClass sootClass) {
         System.out.println("PRINTING JIMPLE========================================================================");
         System.out.println("public class " + sootClass.getName() + " extends " + sootClass.getSuperclass().getName());
@@ -51,15 +64,19 @@ public class Taints {
         return sootClass;
     }
 
-    public static void main(String[] args) {
-        SootClass sootClass = setupSoot("org.example.Demo1");
-        printJimple(sootClass);
-
-        PackManager.v().runPacks();
-
-        analyzeMethods(sootClass);
+    @SuppressWarnings("SameParameterValue")
+    private static void analyzeMethodByName(SootClass sootClass, String targetMethodName) {
+        CallGraph callGraph = Scene.v().getCallGraph();
+        for (SootMethod method : sootClass.getMethods()) {
+            System.out.println("analyzeMethodByName | checking methodSignature: " + method.getName());
+            if (method.isConcrete() && method.getName().equals(targetMethodName)) {
+                System.out.println("analyzeMethodByName | target method found: " + method.getName());
+                analyzeMethod(method, callGraph);
+            }
+        }
     }
 
+    // DOES NOT WORK FOR NOW
     private static void analyzeMethods(SootClass sootClass) {
         CallGraph callGraph = Scene.v().getCallGraph();
         for (SootMethod method : sootClass.getMethods()) {
@@ -74,17 +91,9 @@ public class Taints {
         Body body = method.retrieveActiveBody();
         MyTaintAnalysis analysis = new MyTaintAnalysis(new ExceptionalUnitGraph(body));
         analysis.printResults();
-
-        // Iterator CallGraph to get all functions
-        Iterator<Edge> edges = callGraph.edgesOutOf(method);
-        while (edges.hasNext()) {
-            SootMethod targetMethod = edges.next().tgt();
-            if (targetMethod.isConcrete()) {
-                analyzeMethod(targetMethod, callGraph);
-            }
-        }
     }
 
+    // TEMPORARILY only dealing with Local, would need to change going forwards.
     private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, FlowSet<Local>> {
         private Body body;
         private Set<Unit> analyzedValues;
@@ -100,12 +109,24 @@ public class Taints {
         }
 
         @Override
-        protected FlowSet<Local> newInitialFlow() {
-            return new ArraySparseSet<Local>();
+        protected void merge(FlowSet<Local> in1, FlowSet<Local> in2, FlowSet<Local> out) {
+            in1.union(in2, out);
         }
 
         @Override
+        protected void copy(FlowSet source, FlowSet dest) {
+            source.copy(dest);
+        }
+
+        // start with no taints
+        @Override
         protected FlowSet<Local> entryInitialFlow() {
+            return new ArraySparseSet<Local>();
+        }
+
+        // new set with no taints
+        @Override
+        protected FlowSet<Local> newInitialFlow() {
             return new ArraySparseSet<Local>();
         }
 
@@ -232,16 +253,6 @@ public class Taints {
                     }
                 }
             }
-        }
-
-        @Override
-        protected void merge(FlowSet in1, FlowSet in2, FlowSet out) {
-            in1.union(in2, out); // union(FlowSet otherFlow, FlowSet destFlow); why is it like this?
-        }
-
-        @Override
-        protected void copy(FlowSet source, FlowSet dest) {
-            source.copy(dest);
         }
 
         private boolean isSource(Value value) {

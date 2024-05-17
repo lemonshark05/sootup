@@ -85,7 +85,7 @@ public class Taints {
         }
     }
 
-    private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, FlowSet> {
+    private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, FlowSet<Local>> {
         private Body body;
         private Set<Unit> analyzedValues;
 
@@ -100,13 +100,13 @@ public class Taints {
         }
 
         @Override
-        protected FlowSet newInitialFlow() {
-            return new ArraySparseSet();
+        protected FlowSet<Local> newInitialFlow() {
+            return new ArraySparseSet<Local>();
         }
 
         @Override
-        protected FlowSet entryInitialFlow() {
-            return new ArraySparseSet();
+        protected FlowSet<Local> entryInitialFlow() {
+            return new ArraySparseSet<Local>();
         }
 
         @Override
@@ -236,7 +236,7 @@ public class Taints {
 
         @Override
         protected void merge(FlowSet in1, FlowSet in2, FlowSet out) {
-            in1.union(in2, out);
+            in1.union(in2, out); // union(FlowSet otherFlow, FlowSet destFlow); why is it like this?
         }
 
         @Override

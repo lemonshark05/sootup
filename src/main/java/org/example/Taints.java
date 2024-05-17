@@ -303,6 +303,7 @@ public class Taints {
             return false;
         }
 
+        // store[x] = store[x] union {u}
         private void storeAdd(Unit u, Value v) {
             HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
             Set<Unit> unitSet = valueMap.computeIfAbsent(v, k -> new HashSet<>());
@@ -310,12 +311,36 @@ public class Taints {
             unitSet.add(u);
         }
 
+        // store[x] = {u}
         private void storeSet(Unit u, Value v) {
             HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
             Set<Unit> unitSet = new HashSet<>();
             unitSet.add(u);
 
             valueMap.put(v, unitSet);
+        }
+
+        // store[x] = {}
+        private void storeClear(Unit u, Value v) {
+            HashMap<Value, Set<Unit>> valueMap = store.computeIfAbsent(u, k -> new HashMap<>());
+            Set<Unit> unitSet = new HashSet<>();
+
+            valueMap.put(v, unitSet);
+        }
+
+        // SELF REMINDER IT'S A REFERENCE YOU CAN MODIFY IT
+        private Set<Unit> storeGet(Unit u, Value v) {
+            HashMap<Value, Set<Unit>> valueMap = store.get(u);
+            if (valueMap == null) {
+                throw new IllegalArgumentException("storeGet: Unit " + u + " not found in store.");
+            }
+
+            Set<Unit> unitSet = valueMap.get(v);
+            if (unitSet == null) {
+                throw new IllegalArgumentException("storeGet: Value " + v + " not found in store.");
+            }
+
+            return unitSet;
         }
 
         private boolean isSink(Stmt stmt) {

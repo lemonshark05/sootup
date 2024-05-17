@@ -22,12 +22,45 @@ public class TaintStore<K, V> implements FlowSet<Map.Entry<K, Set<V>>> {
         return map;
     }
 
+    // store[x] = store[x] ∪ {src}
+    public void addTaint(K key, V src) {
+        Set<V> taintSet = store.computeIfAbsent(key, k -> new LinkedHashSet<>());
+        taintSet.add(src);
+    }
+
+    // store[x] = {src}
+    public void setTaint(K key, Set<V> src) {
+        setTaints(key, new LinkedHashSet<>(src));
+    }
+
+    // store[x] = srcs
+    public void setTaints(K key, Set<V> srcs) {
+        store.put(key, srcs);
+    }
+
+    public void clearTaints(K key) {
+        store.put(key, new LinkedHashSet<>());
+    }
+
+    // returns empty set if key doesn't exist
+    public Set<V> getTaints(K key) {
+        Set<V> taints = store.get(key);
+
+        if (taints == null) {
+            // @TODO temporarily throw error here for debug
+            throw new IllegalArgumentException("getTaints: Key " + key + " not found in store.");
+            // return new LinkedHashSet<>();
+        }
+
+        return taints;
+    }
+
     @Override
     public FlowSet<Map.Entry<K, Set<V>>> clone() {
         // why do I have to call super.clone if I'm unsure it does a deep copy here
         TaintStore<K, V> clonedStore = new TaintStore<K, V>();
         for (Map.Entry<K, Set<V>> entry : this.store.entrySet()) {
-            clonedStore.store.put(entry.getKey(), new HashSet<>(entry.getValue()));
+            clonedStore.store.put(entry.getKey(), new LinkedHashSet<>(entry.getValue()));
         }
         return clonedStore;
     }

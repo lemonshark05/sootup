@@ -1,48 +1,44 @@
 package org.example;
 
 import org.jetbrains.annotations.NotNull;
-import soot.Unit;
-import soot.Value;
 import soot.toolkits.scalar.FlowSet;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
-public class TaintStore implements FlowSet<Map.Entry<Value, Set<Unit>>> {
-    private LinkedHashMap<Value, Set<Unit>> store;
+public class TaintStore<K, V> implements FlowSet<Map.Entry<K, Set<V>>> {
+    private LinkedHashMap<K, Set<V>> store;
 
     public TaintStore() {
         this.store = new LinkedHashMap<>();
     }
 
-    private LinkedHashMap<Value, Set<Unit>> iteratorToMap(Iterator<Map.Entry<Value, Set<Unit>>> iterator) {
-        LinkedHashMap<Value, Set<Unit>> map = new LinkedHashMap<>();
+    private LinkedHashMap<K, Set<V>> iteratorToMap(Iterator<Map.Entry<K, Set<V>>> iterator) {
+        LinkedHashMap<K, Set<V>> map = new LinkedHashMap<>();
         while (iterator.hasNext()) {
-            Map.Entry<Value, Set<Unit>> entry = iterator.next();
+            Map.Entry<K, Set<V>> entry = iterator.next();
             map.put(entry.getKey(), entry.getValue());
         }
 
         return map;
     }
 
-
     @Override
-    public FlowSet<Map.Entry<Value, Set<Unit>>> clone() {
-        // why do i have to call super.clone if i'm unsure it does a deep copy here
-        TaintStore clonedStore = new TaintStore();
-        for (Map.Entry<Value, Set<Unit>> entry : this.store.entrySet()) {
+    public FlowSet<Map.Entry<K, Set<V>>> clone() {
+        // why do I have to call super.clone if I'm unsure it does a deep copy here
+        TaintStore<K, V> clonedStore = new TaintStore<K, V>();
+        for (Map.Entry<K, Set<V>> entry : this.store.entrySet()) {
             clonedStore.store.put(entry.getKey(), new HashSet<>(entry.getValue()));
         }
         return clonedStore;
     }
 
     @Override
-    public FlowSet<Map.Entry<Value, Set<Unit>>> emptySet() {
-        return new TaintStore();
+    public FlowSet<Map.Entry<K, Set<V>>> emptySet() {
+        return new TaintStore<K, V>();
     }
 
     @Override
-    public void copy(FlowSet<Map.Entry<Value, Set<Unit>>> flowSet) {
+    public void copy(FlowSet<Map.Entry<K, Set<V>>> flowSet) {
         flowSet.clear();
 
         this.iterator().forEachRemaining(flowSet::add);
@@ -54,53 +50,53 @@ public class TaintStore implements FlowSet<Map.Entry<Value, Set<Unit>>> {
     }
 
     @Override
-    public void union(FlowSet<Map.Entry<Value, Set<Unit>>> flowSet) {
-        for (Map.Entry<Value, Set<Unit>> entry : flowSet) {
+    public void union(FlowSet<Map.Entry<K, Set<V>>> flowSet) {
+        for (Map.Entry<K, Set<V>> entry : flowSet) {
             if (!store.containsKey(entry.getKey())) {
                 store.put(entry.getKey(), entry.getValue());
             } else {
-                Set<Unit> thisSet = store.get(entry.getKey());
+                Set<V> thisSet = store.get(entry.getKey());
                 thisSet.addAll(entry.getValue());
             }
         }
     }
 
     @Override
-    public void union(FlowSet<Map.Entry<Value, Set<Unit>>> flowSet, FlowSet<Map.Entry<Value, Set<Unit>>> flowSet1) {
+    public void union(FlowSet<Map.Entry<K, Set<V>>> flowSet, FlowSet<Map.Entry<K, Set<V>>> flowSet1) {
         flowSet.copy(flowSet1);
         flowSet1.union(flowSet);
     }
 
     @Override
-    public void intersection(FlowSet<Map.Entry<Value, Set<Unit>>> flowSet) {
-        for (Map.Entry<Value, Set<Unit>> entry : flowSet) {
+    public void intersection(FlowSet<Map.Entry<K, Set<V>>> flowSet) {
+        for (Map.Entry<K, Set<V>> entry : flowSet) {
             if (!store.containsKey(entry.getKey())) {
                 store.remove(entry.getKey());
             } else {
-                Set<Unit> thisSet = store.get(entry.getKey());
+                Set<V> thisSet = store.get(entry.getKey());
                 thisSet.retainAll(entry.getValue());
             }
         }
     }
 
     @Override
-    public void intersection(FlowSet<Map.Entry<Value, Set<Unit>>> flowSet, FlowSet<Map.Entry<Value, Set<Unit>>> flowSet1) {
+    public void intersection(FlowSet<Map.Entry<K, Set<V>>> flowSet, FlowSet<Map.Entry<K, Set<V>>> flowSet1) {
         flowSet.copy(flowSet1);
         flowSet1.intersection(flowSet);
     }
 
     @Override
-    public void difference(FlowSet<Map.Entry<Value, Set<Unit>>> flowSet) {
-        for (Map.Entry<Value, Set<Unit>> entry : flowSet) {
+    public void difference(FlowSet<Map.Entry<K, Set<V>>> flowSet) {
+        for (Map.Entry<K, Set<V>> entry : flowSet) {
             if (store.containsKey(entry.getKey())) {
-                Set<Unit> thisSet = store.get(entry.getKey());
+                Set<V> thisSet = store.get(entry.getKey());
                 thisSet.removeAll(entry.getValue());
             }
         }
     }
 
     @Override
-    public void difference(FlowSet<Map.Entry<Value, Set<Unit>>> flowSet, FlowSet<Map.Entry<Value, Set<Unit>>> flowSet1) {
+    public void difference(FlowSet<Map.Entry<K, Set<V>>> flowSet, FlowSet<Map.Entry<K, Set<V>>> flowSet1) {
         flowSet.copy(flowSet1);
         flowSet1.difference(flowSet);
     }
@@ -116,31 +112,31 @@ public class TaintStore implements FlowSet<Map.Entry<Value, Set<Unit>>> {
     }
 
     @Override
-    public void add(Map.Entry<Value, Set<Unit>> valueSetEntry) {
+    public void add(Map.Entry<K, Set<V>> valueSetEntry) {
         store.put(valueSetEntry.getKey(), valueSetEntry.getValue());
     }
 
     @Override
-    public void add(Map.Entry<Value, Set<Unit>> valueSetEntry, FlowSet<Map.Entry<Value, Set<Unit>>> flowSet) {
+    public void add(Map.Entry<K, Set<V>> valueSetEntry, FlowSet<Map.Entry<K, Set<V>>> flowSet) {
         this.copy(flowSet);
         flowSet.add(valueSetEntry);
     }
 
     @Override
-    public void remove(Map.Entry<Value, Set<Unit>> valueSetEntry) {
+    public void remove(Map.Entry<K, Set<V>> valueSetEntry) {
         store.remove(valueSetEntry.getKey(), valueSetEntry.getValue());
     }
 
     @Override
-    public void remove(Map.Entry<Value, Set<Unit>> valueSetEntry, FlowSet<Map.Entry<Value, Set<Unit>>> flowSet) {
+    public void remove(Map.Entry<K, Set<V>> valueSetEntry, FlowSet<Map.Entry<K, Set<V>>> flowSet) {
         this.copy(flowSet);
         flowSet.remove(valueSetEntry);
     }
 
     // checks exactly for key AND value
     @Override
-    public boolean contains(Map.Entry<Value, Set<Unit>> valueSetEntry) {
-        Set<Unit> checkSet = store.get(valueSetEntry.getKey());
+    public boolean contains(Map.Entry<K, Set<V>> valueSetEntry) {
+        Set<V> checkSet = store.get(valueSetEntry.getKey());
         if (checkSet == null) {
             return false;
         }
@@ -149,17 +145,17 @@ public class TaintStore implements FlowSet<Map.Entry<Value, Set<Unit>>> {
     }
 
     @Override
-    public boolean isSubSet(FlowSet<Map.Entry<Value, Set<Unit>>> flowSet) {
+    public boolean isSubSet(FlowSet<Map.Entry<K, Set<V>>> flowSet) {
         return false;
     }
 
     @Override
-    public @NotNull Iterator<Map.Entry<Value, Set<Unit>>> iterator() {
+    public @NotNull Iterator<Map.Entry<K, Set<V>>> iterator() {
         return store.entrySet().iterator();
     }
 
     @Override
-    public List<Map.Entry<Value, Set<Unit>>> toList() {
+    public List<Map.Entry<K, Set<V>>> toList() {
         return new ArrayList<>(store.entrySet());
     }
 }

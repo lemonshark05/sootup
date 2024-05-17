@@ -53,9 +53,7 @@ public class TaintStore<K, V> implements FlowSet<Map.Entry<K, Set<V>>> {
         Set<V> taints = store.get(key);
 
         if (taints == null) {
-            // @TODO temporarily throw error here for debug
-            throw new IllegalArgumentException("getTaints: Key " + key + " not found in store.");
-            // return new LinkedHashSet<>();
+            return new LinkedHashSet<>();
         }
 
         return taints;

@@ -159,21 +159,8 @@ public class Taints {
 
                 // Propagate taint if the right side is already tainted
                 if (rightOp instanceof InvokeExpr invokeExpr) {
-
-<<<<<<< HEAD
-                    // Check for instance method calls
-                    if (invokeExpr instanceof InstanceInvokeExpr instanceInvoke) {
-
-                        Set<Unit> taintedBy = in.getTaints(instanceInvoke.getBase());
-                        for (Unit taint : taintedBy) {
-
-                        }
-
-=======
                     // Handle instance method invocation expressions
-                    if (invokeExpr instanceof InstanceInvokeExpr) {
-                        InstanceInvokeExpr instanceInvoke = (InstanceInvokeExpr) invokeExpr;
->>>>>>> main
+                    if (invokeExpr instanceof InstanceInvokeExpr instanceInvoke) {
                         out.propagateTaints(instanceInvoke.getBase(), leftOp);
                     }
 

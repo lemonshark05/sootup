@@ -33,8 +33,6 @@ public class Taints {
         PackManager.v().runPacks();
 
         analyzeMethodByName(sootClass, TARGET_METHOD_NAME); // intra-method
-
-
     }
 
     private static void printJimple(SootClass sootClass) {
@@ -103,7 +101,7 @@ public class Taints {
         System.out.println(analysis.getTaintInfoString());
     }
 
-    private static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, TaintStore<Value, Unit>> {
+    static class MyTaintAnalysis extends ForwardFlowAnalysis<Unit, TaintStore<Value, Unit>> {
         private Body body;
         private PointsToAnalysis pta;
 
@@ -113,7 +111,7 @@ public class Taints {
             super(graph);
             this.body = ((ExceptionalUnitGraph) graph).getBody();
             this.sinkToSourceMap = new LinkedHashMap<>();
-            this.pta = Scene.v().getPointsToAnalysis();
+            this.pta = Scene.v().getPointsToAnalysis(); // @TODO we haven't set one
             doAnalysis();
         }
 
@@ -145,8 +143,7 @@ public class Taints {
             in.copy(out); // set current set of tainted vars to previous instruction's set
 
             // Handles all assign statements.
-            if (unit instanceof JAssignStmt) {
-                JAssignStmt stmt = (JAssignStmt) unit;
+            if (unit instanceof JAssignStmt stmt) {
                 Value rightOp = stmt.getRightOp();
                 Value leftOp = stmt.getLeftOp();
 
@@ -161,12 +158,10 @@ public class Taints {
                 }
 
                 // Propagate taint if the right side is already tainted
-                if (rightOp instanceof InvokeExpr) {
-                    InvokeExpr invokeExpr = (InvokeExpr) rightOp;
+                if (rightOp instanceof InvokeExpr invokeExpr) {
 
                     // Check for instance method calls
-                    if (invokeExpr instanceof InstanceInvokeExpr) {
-                        InstanceInvokeExpr instanceInvoke = (InstanceInvokeExpr) invokeExpr;
+                    if (invokeExpr instanceof InstanceInvokeExpr instanceInvoke) {
 
                         Set<Unit> taintedBy = in.getTaints(instanceInvoke.getBase());
                         for (Unit taint : taintedBy) {
@@ -182,14 +177,12 @@ public class Taints {
                     }
                 }
 
-                if (unit instanceof InvokeStmt) {
-                    InvokeStmt invokeStmt = (InvokeStmt) unit;
+                if (unit instanceof InvokeStmt invokeStmt) {
                     InvokeExpr invokeExpr = invokeStmt.getInvokeExpr();
                     handleMethodInvocation(invokeExpr, in, out);
                 }
 
-                if (unit instanceof ReturnStmt) {
-                    ReturnStmt returnStmt = (ReturnStmt) unit;
+                if (unit instanceof ReturnStmt returnStmt) {
                     Value returnValue = returnStmt.getOp();
                     if (in.isTainted(returnValue)) {
 
@@ -197,15 +190,14 @@ public class Taints {
                 }
 
                 // Check if the leftOp points to any object that rightOp points to (aliasing)
-                // COPY INSTRUCTION, SET INSTEAD OF ADD
+                // COPY INSTRUCTION, SET INSTEAD OF PROPAGATE
                 if (rightOp instanceof Local) {
                     out.setTaints(leftOp, out.getTaints(rightOp));
                 }
 
                 // attempt at generalized binop
-                if (rightOp instanceof BinopExpr) {
-                    BinopExpr binopexpr = (BinopExpr) rightOp;
-
+                // @TODO we should set instead of propagate here maybe? double check.
+                if (rightOp instanceof BinopExpr binopexpr) {
                     out.propagateTaints(binopexpr.getOp1(), leftOp);
                     out.propagateTaints(binopexpr.getOp2(), leftOp);
                 }
@@ -242,11 +234,12 @@ public class Taints {
                     out.setTaint(leftOp, unit);
                     System.out.println("Source identified and tainted: " + leftOp);
                 }
+            } else {
+                System.out.println(unit.getClass().getName());
             }
 
             // detached sink checking
-            if (unit instanceof Stmt) {
-                Stmt stmt = (Stmt) unit;
+            if (unit instanceof Stmt stmt) {
                 if (stmt.containsInvokeExpr()) {
                     checkStmtForSink(stmt, in, out);
                 }
@@ -275,7 +268,7 @@ public class Taints {
             }
         }
 
-        private String getTaintInfoString() {
+        public String getTaintInfoString() {
             StringBuilder output = new StringBuilder();
             for (Map.Entry<Unit, Set<Unit>> snksrcentry : sinkToSourceMap.entrySet()) {
                 Unit snk = snksrcentry.getKey();
@@ -300,8 +293,7 @@ public class Taints {
         }
 
         private boolean isSource(Object value) {
-            if (value instanceof InvokeExpr) {
-                InvokeExpr invokeExpr = (InvokeExpr) value;
+            if (value instanceof InvokeExpr invokeExpr) {
                 SootMethod method = invokeExpr.getMethod();
                 String classMethodString = method.getDeclaringClass().getName() + "." + method.getName();
                 for (String src : TAINT_SRCS) {

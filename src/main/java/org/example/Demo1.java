@@ -38,7 +38,7 @@ public class Demo1 {
             // Construct SQL query with user inputs directly
             String sql = "SELECT * FROM users WHERE username = '" + username + "' AND password = '" + password + "'";
             System.out.println("Executing query: " + sql);
-
+            // sql = "clear taint";
             ResultSet rs = stmt.executeQuery(sql);
             if (rs.next()) {
                 System.out.println("Login successful!");

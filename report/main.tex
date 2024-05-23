@@ -1,13 +1,37 @@
 \documentclass[acmsmall]{acmart}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{listings}
 
 \setcopyright{none}
 \AtBeginDocument{%
   \providecommand\BibTeX{{%
     Bib\TeX}}}
+
+
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+\lstset{frame=tb,
+  language=Java,
+  aboveskip=3mm,
+  belowskip=3mm,
+  showstringspaces=false,
+  columns=flexible,
+  basicstyle={\small\ttfamily},
+  numbers=none,
+  numberstyle=\tiny\color{gray},
+  keywordstyle=\color{blue},
+  commentstyle=\color{dkgreen},
+  stringstyle=\color{mauve},
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=3
+}
+
 \begin{document}
-\title{Taint Analysis in Simple Java Programs}
+\title{Who Dropped My Tables: Taint Analysis in Simple Java Programs}
 
 \author{Zhiming Meng}
 \affiliation{%
@@ -26,13 +50,17 @@
 }
 
 \begin{abstract}
-    Abstract placeholder. test test
+  Nowadays, with modern frameworks and libraries. SQL Injections are the least of one's worries when dealing with queries. However, they serve as an intuitive example on showing how taint analysis is useful and even significant. In this paper, we write a very simple taint analysis in Soot that looks for areas of user input and traces them to query executions.
 \end{abstract}
 
 \maketitle
 
 \section{Introduction}
-Introduction placeholder.
+\subsection{Importance of Taint Analysis}
+In an era where data breaches and cyber threats are increasingly common, securing web applications has become paramount. Taint analysis serves as a critical technique in identifying vulnerabilities by tracking how information flows through software, particularly how data from untrusted sources interacts with sensitive areas of an application. For example, we might want to prove that an area in our application that stores or has access to sensitive user information never interacts with areas that have network access. Taint analysis will let us find these connections and break them, ensuring security.
+
+\subsection{Objective and Scope}
+The objective of this project is to implement a robust taint analysis tool using the Soot framework, focusing on Java web applications to detect and prevent SQL injections. This analysis was confined to applications built with Java 8, using simple, open-source projects for initial testing. The analysis itself is excuted on Java 17.
 
 \section{Approach}
 \subsection{Intra-procedural Analysis}
@@ -40,31 +68,31 @@ Introduction placeholder.
 
 \subsubsection{TaintStore} To be able to map variables to their respective taint sources for each program point, we create a \texttt{TaintStore} class that implements the \texttt{FlowSet} interface. By setting the generic parameter of the \texttt{FlowSet} interface to \texttt{Map.Entry<$K$, Set<$V$>{}>}, we are able to have an underlying $store:var \mapsto \{s \mid s \text{ is a taint source}\}$ mapping structure. A \texttt{LinkedTreeMap} is used to preserve the order that the individual statements are traversed. The key and value types are left generic for extensibility should we need to use different types to represent variables and taint sources. 
 
-\begin{center}
-  \begin{table}[hbt!]
-  \caption{Methods for interacting with taint store.}
-  \label{table:taint-operations}
-  \renewcommand{\arraystretch}{1.1}
-    \begin{tabular}{ |rl|l| } 
-      \hline
-      method & params & operation \\ 
-      \hline
-      \textsc{addTaint} & $k,v$ & $store[k] = store[k]\cup\{v\}$ \\ 
-      \textsc{addTaints} & $k,\{v_1, v_2,...\}$ & $store[k] = store[k]\cup\{v_1, v_2,...\}$ \\ 
-      
-      \textsc{propagateTaints} & $k_1, k_2$ & $store[k_2] = store[k_1]\cup store[k_2]$  \\ 
+\begin{table}[hbt!]
+\caption{Methods for interacting with taint store.}
+\label{table:taint-operations}
+\renewcommand{\arraystretch}{1.1}
+  \begin{tabular}{ |rl|l| } 
+    \hline
+    method & params & operation \\ 
+    \hline
+    \textsc{addTaint} & $k,v$ & $store[k] = store[k]\cup\{v\}$ \\ 
+    \textsc{addTaints} & $k,\{v_1, v_2,...\}$ & $store[k] = store[k]\cup\{v_1, v_2,...\}$ \\ 
+    
+    \textsc{propagateTaints} & $k_1, k_2$ & $store[k_2] = store[k_1]\cup store[k_2]$  \\ 
 
-      \textsc{setTaint} & $k,v$ & $store[k] = \{v\}$ \\ 
-      \textsc{setTaints} & $k,\{v_1, v_2,...\}$ & $store[k] = \{v_1, v_2,...\}$ \\ 
-      \textsc{setTaints} & $k_1, k_2$ & $store[k_2] = store[k_1]$ \\ 
+    \textsc{setTaint} & $k,v$ & $store[k] = \{v\}$ \\ 
+    \textsc{setTaints} & $k,\{v_1, v_2,...\}$ & $store[k] = \{v_1, v_2,...\}$ \\ 
+    \textsc{setTaints} & $k_1, k_2$ & $store[k_1] = store[k_2]$ \\ 
 
-      \textsc{isTainted} & $k$ & \textbf{return} $true$ \textbf{if} $|store[k]| > 0$ \\ 
-      \textsc{getTaints} & $k$ & \textbf{return} $store[k]$ \\ 
-      \hline
-    \end{tabular}
-  \end{table}
-\end{center}
+    \textsc{clearTaints} & $k$ & $store[k] = {}$ \\
 
+    \textsc{isTainted} & $k$ & \textbf{return} $true$ \textbf{if} $|store[k]| > 0$ \\ 
+    \textsc{getTaints} & $k$ & \textbf{return} $store[k]$ \\ 
+    \hline
+  \end{tabular}
+\end{table}
+\pagebreak
 \subsubsection{flowThrough}
 We override \texttt{flowThrough} to check if the $unit$ parameter is an instance of certain interface and classes to determine the rules that will be used to propagate taints. In Algorithm \ref{alg1}, $in$ is the incoming taint store from the analysis of the previous statement, $out$ is the statement that will be modified in the analysis of the current function, and then passed to the analysis of the next statement. Methods used to manipulate the taint store are described in Table \ref{table:taint-operations}.
 
@@ -78,42 +106,97 @@ We override \texttt{flowThrough} to check if the $unit$ parameter is an instance
     \If {$unit$ \textbf{instanceof} $JAssignmentStmt$} \Comment{Handles assignment statements}
       \State $rightOp \gets jAssignmentStmt.$\textsc{getRightOp}$()$
       \State $leftOp \gets jAssignmentStmt.$\textsc{getLeftOp}$()$
-
+      \If {\textsc{isSource}$(rightOp)$}
+        \State $out.$\textsc{setTaint}$(leftOp,unit)$ \Comment{Unit is used as the key for sources}
+      \EndIf
       \If {$rightOp$ \textbf{instanceof} $StaticFieldRef$} \Comment{Handles static fields}
-        \State $out.$\textsc{setTaints}$(rightOp,leftOp)$
+        \State $out.$\textsc{setTaint}$(rightOp,leftOp)$
       \EndIf
       \If {$rightOp$ \textbf{instanceof} $InvokeExpr$} \Comment{Handles method invokes}
         \If {$invokeExpr$ \textbf{instanceof} $InstanceInvokeExpr$}
-          \State $out.$\textsc{setTaints}$(instanceInvokeExpr.\textsc{getBase}(),leftOp)$
+          \State $out.$\textsc{setTaint}$(leftOp,instanceInvokeExpr.\textsc{getBase}())$
         \EndIf
         \If {$invokeExpr$ \textbf{instanceof} $StaticInvokeExpr$}
-          \State $out.$\textsc{setTaints}$(staticInvokeExpr,leftOp)$
+          \State $out.$\textsc{setTaint}$(leftOp,staticInvokeExpr)$
         \EndIf
         \If {$invokeExpr$ \textbf{instanceof} $DynamicInvokeExpr$}
-          \State $out.$\textsc{setTaints}$(dynamicInvokeExpr,leftOp)$
+          \State $out.$\textsc{setTaint}$(leftOp,dynamicInvokeExpr)$
         \EndIf
         \For{arg \textbf{in} $invokeExpr.$\textsc{getArgs}$()$} \Comment{Weak update arguments}
           \State $out.$\textsc{propagateTaints}$(arg,leftOp)$
         \EndFor
       \EndIf
-
+      \If {$rightOp$ \textbf{instanceof} $Local$}
+        \State $out.$\textsc{setTaints}$(leftOp,rightOp)$
+      \EndIf
+      \If {$rightOp$ \textbf{instanceof} $BinopExpr$}
+        \State $out.$\textsc{clearTaints}$(leftOp)$
+        \State $out.$\textsc{setTaint}$(leftOp,binopExpr.$\textsc{getOp1}$())$
+        \State $out.$\textsc{setTaint}$(leftOp,binopExpr.$\textsc{getOp2}$())$
+        
+      \EndIf
     \EndIf
+
     \State \textsc{updateSink}$()$ \Comment{Add currently tainted sources to solution if sink}
   \EndProcedure
 \end{algorithmic}
 \end{algorithm}
-
-
+\pagebreak
 \section{Results}
-Results placeholder.
+This is a taint analysis that works for a very limited instruction set. As an example of programs with possible taints, we created simple test programs that reads for a user input, then executes queries to an SQL server. In our test program, we identify \texttt{nextLine} as a source invoke, and \texttt{executeQuery, executeUpdate, execute} as sink invokes.
 
+\subsection{Test Code}
+\subsubsection{Sources}
+In our test program, we provided two lines that scanned for $username$ and $password$ variables through a user's input.
+\begin{lstlisting}[label=lst:sourcesJava,caption=Taint sources in Java.]
+  System.out.println("Enter username:");
+  String username = scanner.nextLine();
+  System.out.println("Enter password:");
+  String password = scanner.nextLine();
+\end{lstlisting}
+
+In the Jimple generated from this test program, two lines were identified as lines that introduce taint sources, which correspond to the two scanner lines in the Java.
+\begin{lstlisting}[label=lst:sources,caption=Taint sources in test Jimple.]
+  $stack9 = virtualinvoke $stack8.<java.util.Scanner: java.lang.String nextLine()>()
+  $stack12 = virtualinvoke $stack11.<java.util.Scanner: java.lang.String nextLine()>()
+\end{lstlisting}
+\subsubsection{Sinks}
+The below line is set as the sink statement for the program.
+\begin{lstlisting}[label=lst:sinksJava,caption=Sinks in Java.]
+  ResultSet rs = stmt.executeQuery(sql);
+\end{lstlisting}
+
+Following is the sink statement converted to Jimple.
+\begin{lstlisting}[label=lst:sources,caption=Sinks in Jimple.]
+  $stack16 = interfaceinvoke $stack6.<java.sql.Statement: java.sql.ResultSet executeQuery(java.lang.String)>($stack13)
+\end{lstlisting}
+
+\subsubsection{Output}
+After running the analysis on the test program, the below was output to terminal. The arrows on the left show a source to sink relationship. The line above shows where the taint source is introduced. The line below shows where the taint is sunk.
+\begin{lstlisting}[label=lst:sinks,caption=Source to sink paths.]
+      $stack9 = virtualinvoke $stack8.<java.util.Scanner: java.lang.String nextLine()>()
+  --> $stack16 = interfaceinvoke $stack6.<java.sql.Statement: java.sql.ResultSet executeQuery(java.lang.String)>($stack13)
+
+      $stack12 = virtualinvoke $stack11.<java.util.Scanner: java.lang.String nextLine()>()
+  --> $stack16 = interfaceinvoke $stack6.<java.sql.Statement: java.sql.ResultSet executeQuery(java.lang.String)>($stack13)
+\end{lstlisting}
+
+When we create an additional line in the test program to set the value of $sql$ to a \texttt{String} literal before being sunk, the analysis returned nothing for the taint information.
 \section{Discussion}
-Discussion placeholder.
+Through the initial results, it can be seen that the analysis is able to detect a very simple path through assignments in our test program. Furthermore, when the tainted variables are overwritten before being sunk, the analysis is able to determine that there is no active source to sink path, and thus print no taint information. This showcases the taint store being functional at a very basic level.
+
+\subsection{Benchmarks}
+\subsubsection{Detection Accuracy} The tool was benchmarked for its ability to accurately detect SQL Injection vulnerabilities. It successfully identified the taint propagation from the source \texttt{Scanner.nextLine()} to the sink \texttt{Statement.executeQuery()}.
+
+\subsubsection{Limitations}
+The analysis currently coarsely makes big assumptions for assignment statements. It is also currently only intra-procedural. An attempt was made to build an abtract context for an inter-procedural analysis, but the complexity of Soot's call graph proved it a challenge for this time frame.
 
 \section{Future Work}
-Future work placeholder.~\cite{Test_Bib}
+We chose to use Soot for this project as there are many existing codebases and documentation. This taint analysis could be ported to SootUp~\cite{SootUp}, the successor to Soot. As SootUp was designed to be Soot but better, future implementations of inter-procedural analysis would possibly be easier to implement in SootUp. Also, the analysis can be expanded further to fit the full range of Jimple's syntax.
+
 
 %% \nocite{*}
+\nocite{LstFormatting}
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{bibfile}
 

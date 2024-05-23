@@ -14,7 +14,7 @@ public class Taints {
 
     // Debug variables
     private static final String TARGET_METHOD_NAME = "loginUsers";
-    private static final String TARGET_PACKAGE_NAME = "org.example.Demo5";
+    private static final String TARGET_PACKAGE_NAME = "org.example.Demo1";
 
     // @TODO case sensitivity?
     private static final String[] TAINT_SRCS = {

@@ -38,13 +38,14 @@ Introduction placeholder.
 \subsection{Intra-procedural Analysis}
 \subsubsection{ForwardFlowAnalysis} Soot provides an abstract class \texttt{ForwardFlowAnalysis} that we subclass to implement our own taint analysis. We define a concrete implementation of the abstract method \texttt{flowThrough} which utilizes set implementing the \texttt{FlowSet} interface to compute a fixed-point in the dataflow through a worklist algorithm. The \texttt{flowThrough} method traverses the method, with every program point having its own \texttt{FlowSet}. Since we are working with Jimple, program points are of type \texttt{Stmt}, and they implement the \texttt{Unit} interface, needed to denote a unit of execution within the intermediate representation.
 
-\subsubsection{TaintStore} To keep be able to map variables to their respective taint sources for each program point, we create a \texttt{TaintStore} class that implements the \texttt{FlowSet} interface. By setting the generic parameter of the \texttt{FlowSet} interface to \texttt{Map.Entry<$K$, Set<$V$>{}>}, we are able to have an underlying $store:var \mapsto \{s \mid s \text{ is a taint source}\}$ mapping structure. A \texttt{LinkedTreeMap} is used to preserve the order that the individual statements are traversed. The key and value types are left generic for extensibility should we need to use different types to represent variables and taint sources.
+\subsubsection{TaintStore} To be able to map variables to their respective taint sources for each program point, we create a \texttt{TaintStore} class that implements the \texttt{FlowSet} interface. By setting the generic parameter of the \texttt{FlowSet} interface to \texttt{Map.Entry<$K$, Set<$V$>{}>}, we are able to have an underlying $store:var \mapsto \{s \mid s \text{ is a taint source}\}$ mapping structure. A \texttt{LinkedTreeMap} is used to preserve the order that the individual statements are traversed. The key and value types are left generic for extensibility should we need to use different types to represent variables and taint sources. 
 
 \begin{center}
-  \begin{table}
+  \begin{table}[hbt!]
   \caption{Methods for interacting with taint store.}
-  \renewcommand{\arraystretch}{1.3}
-    \begin{tabular}{ |rl||c| } 
+  \label{table:taint-operations}
+  \renewcommand{\arraystretch}{1.1}
+    \begin{tabular}{ |rl|l| } 
       \hline
       method & params & operation \\ 
       \hline
@@ -55,6 +56,7 @@ Introduction placeholder.
 
       \textsc{setTaint} & $k,v$ & $store[k] = \{v\}$ \\ 
       \textsc{setTaints} & $k,\{v_1, v_2,...\}$ & $store[k] = \{v_1, v_2,...\}$ \\ 
+      \textsc{setTaints} & $k_1, k_2$ & $store[k_2] = store[k_1]$ \\ 
 
       \textsc{isTainted} & $k$ & \textbf{return} $true$ \textbf{if} $|store[k]| > 0$ \\ 
       \textsc{getTaints} & $k$ & \textbf{return} $store[k]$ \\ 
@@ -63,14 +65,38 @@ Introduction placeholder.
   \end{table}
 \end{center}
 
+\subsubsection{flowThrough}
+We override \texttt{flowThrough} to check if the $unit$ parameter is an instance of certain interface and classes to determine the rules that will be used to propagate taints. In Algorithm \ref{alg1}, $in$ is the incoming taint store from the analysis of the previous statement, $out$ is the statement that will be modified in the analysis of the current function, and then passed to the analysis of the next statement. Methods used to manipulate the taint store are described in Table \ref{table:taint-operations}.
+
 \begin{algorithm}
-  \caption{Intra-procedural analysis of a method.}
+  \caption{Intra-procedural analysis with flowThrough}
   \label{alg1}
 \begin{algorithmic}[1]
+  \State \textbf{Map} $sinkToSourceMap:sink \mapsto \{src \mid src \text{ taints sink}\}$
   \Procedure{flowThrough}{$in, unit, out$}
-    \State $in.copy(out)$ \Comment{Sets $out = in$}
-    \If {$unit$ \textbf{instanceof} criteria} \Comment{Handles different types of $stmts$}
-    \State \textsc{updateTaints}$(lhs,rhs)$ \Comment{Propagate taint with specific method}
+    \State $in.$\textsc{copy}$(out)$ \Comment{Sets $out = in$ as a baseline}
+    \If {$unit$ \textbf{instanceof} $JAssignmentStmt$} \Comment{Handles assignment statements}
+      \State $rightOp \gets jAssignmentStmt.$\textsc{getRightOp}$()$
+      \State $leftOp \gets jAssignmentStmt.$\textsc{getLeftOp}$()$
+
+      \If {$rightOp$ \textbf{instanceof} $StaticFieldRef$} \Comment{Handles static fields}
+        \State $out.$\textsc{setTaints}$(rightOp,leftOp)$
+      \EndIf
+      \If {$rightOp$ \textbf{instanceof} $InvokeExpr$} \Comment{Handles method invokes}
+        \If {$invokeExpr$ \textbf{instanceof} $InstanceInvokeExpr$}
+          \State $out.$\textsc{setTaints}$(instanceInvokeExpr.\textsc{getBase}(),leftOp)$
+        \EndIf
+        \If {$invokeExpr$ \textbf{instanceof} $StaticInvokeExpr$}
+          \State $out.$\textsc{setTaints}$(staticInvokeExpr,leftOp)$
+        \EndIf
+        \If {$invokeExpr$ \textbf{instanceof} $DynamicInvokeExpr$}
+          \State $out.$\textsc{setTaints}$(dynamicInvokeExpr,leftOp)$
+        \EndIf
+        \For{arg \textbf{in} $invokeExpr.$\textsc{getArgs}$()$} \Comment{Weak update arguments}
+          \State $out.$\textsc{propagateTaints}$(arg,leftOp)$
+        \EndFor
+      \EndIf
+
     \EndIf
     \State \textsc{updateSink}$()$ \Comment{Add currently tainted sources to solution if sink}
   \EndProcedure

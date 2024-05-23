@@ -140,6 +140,7 @@ public class Taints {
         @Override
         protected void flowThrough(TaintStore<Value, Unit> in, Unit unit, TaintStore<Value, Unit> out) {
 
+            // @TODO currently propagating everything for debug
             in.copy(out); // set current set of tainted vars to previous instruction's set
 
             // Handles all assign statements.
